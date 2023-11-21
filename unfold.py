@@ -156,6 +156,12 @@ if __name__ == '__main__':
     prog_draw = ctx.program(vertex_shader=vertex_src,
                             fragment_shader=fragment_src)
 
+    # Create glow shader
+    with open('fragment_glow.glsl') as f:
+        fragment_src = ''.join(f.readlines())
+    prog_glow = ctx.program(vertex_shader=vertex_src,
+                            fragment_shader=fragment_src)
+
     # Load a texture
     tex_path = 'sprite.png'
     img = pygame.image.load(tex_path).convert_alpha()
@@ -174,10 +180,11 @@ if __name__ == '__main__':
 
         total_time += clock.get_time()
         angle = total_time * 0.05
+        prog_glow['time'] = total_time * 0.005
 
         # Render texture to screen
         render(ctx, tex, ctx.screen, position=(300, 300),
-               scale=(16., 16.), angle=angle, shader=prog_draw)
+               scale=(16., 16.), angle=angle, shader=prog_glow)
 
         # Update the display
         pygame.display.flip()
