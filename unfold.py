@@ -3,6 +3,8 @@ from moderngl import Texture, Framebuffer, Context, Program
 import numpy as np
 import pygame
 from time import time
+from math import radians, sin, cos
+import numbers
 
 
 def surface_to_texture(ctx: Context, sfc: pygame.Surface) -> moderngl.Texture:
@@ -39,36 +41,74 @@ def load_texture(ctx: Context, path: str) -> moderngl.Texture:
     return surface_to_texture(ctx, img)
 
 
+def create_rotated_rect(position, width, height, scale, angle):
+    # Scale rect
+    w = scale[0] * width
+    h = scale[1] * height
+
+    # Rotate rect
+    ar = radians(angle)
+    cos_a, sin_a = cos(ar), sin(ar)
+
+    half_w, half_h = w / 2, h / 2
+
+    half_w_cos, half_w_sin = half_w * cos_a, half_w * sin_a
+    half_h_cos, half_h_sin = half_h * cos_a, half_h * sin_a
+
+    p1 = (half_w_cos - half_h_sin, half_w_sin + half_h_cos)
+    p2 = (-half_w_cos - half_h_sin, -half_w_sin + half_h_cos)
+    p3 = (-half_w_cos + half_h_sin, -half_w_sin - half_h_cos)
+    p4 = (half_w_cos + half_h_sin, half_w_sin - half_h_cos)
+    ps = [p1, p2, p3, p4]
+
+    # Translate vertices
+    x, y = position
+    ps = [(px + x, py + y) for px, py in ps]
+
+    return ps
+
+
 def render(ctx: Context, tex: Texture, fbo: Framebuffer,
-           position=(0, 0), section=None, scale=1.0, rotation=0.0, shader: Program = None):
+           position=(0, 0), scale=(1.0, 1.0), angle=0.0, section=None, shader: Program = None):
     # Create section rect if none
     if section == None:
         section = pygame.Rect(0, 0, tex.width, tex.height)
 
     # Default to draw shader program if none
     if shader == None:
-        shader = prog_draw
+        shader = prog_draw  # prog_draw will be built upon initialization in the actual engine
 
-    # Rotation not implemented yet
-    if rotation != 0.0:
-        raise NotImplementedError('Rotation has not been implemented yet!')
+    # If the scale is not a tuple but a scalar, convert it into a tuple
+    if isinstance(scale, numbers.Number):
+        scale = (scale, scale)
+
+    # ================ Create a mesh with screen vertex data ================
+    def to_screen_coords(p):
+        return (2. * p[0] / fbo.width - 1., 1. - 2. * p[1] / fbo.height)
+
+    ps = create_rotated_rect(position, section.width,
+                             section.height, scale, angle)
+
+    # Convert to screen coordinates
+    ps = [to_screen_coords(p) for p in ps]
+    p1, p2, p3, p4 = ps
 
     # Mesh for destination rect on screen
-    x = 2. * position[0] / fbo.width - 1.
-    y = 1. - 2. * position[1] / fbo.height
-    w = 2. * section.width * scale / fbo.width
-    h = 2. * section.height * scale / fbo.height
-    vertices = np.array([(x, y), (x + w, y), (x, y - h),
-                         (x, y - h), (x + w, y), (x + w, y - h)], dtype=np.float32)
+    vertices = np.array([p3, p4, p2,
+                         p2, p4, p1], dtype=np.float32)
 
-    # Mesh for source within the texture
+    # ================ Create a mesh with texture vertex data ================
+    # Convert to texture coordinates
     x = section.x / tex.width
     y = section.y / tex.height
     w = section.width / tex.width
     h = section.height / tex.height
+
+    # Mesh for source within the texture
     tex_coords = np.array([(x, y + h), (x + w, y + h), (x, y),
                            (x, y), (x + w, y + h), (x + w, y)], dtype=np.float32)
 
+    # ================ Create vertex buffer objects and render ================
     # Create VBO and VAO
     buffer_data = np.hstack([vertices, tex_coords])
 
@@ -88,7 +128,6 @@ def render(ctx: Context, tex: Texture, fbo: Framebuffer,
 
 
 if __name__ == '__main__':
-    print('what')
     # Initialize pygame
     pygame.init()
 
@@ -125,14 +164,20 @@ if __name__ == '__main__':
     # Game loop
     clock = pygame.time.Clock()
     running = True
+    total_time = 0
     while running:
         # Tick the clock at 60 frames per second
         clock.tick(60)
         t0 = time()
 
+        ctx.screen.clear(0, 0, 0, 1)
+
+        total_time += clock.get_time()
+        angle = total_time * 0.05
+
         # Render texture to screen
-        render(ctx, tex, ctx.screen, position=(
-            100, 100), scale=16., shader=prog_draw)
+        render(ctx, tex, ctx.screen, position=(300, 300),
+               scale=(16., 16.), angle=angle, shader=prog_draw)
 
         # Update the display
         pygame.display.flip()
