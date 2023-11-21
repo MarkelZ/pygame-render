@@ -2,7 +2,7 @@ import moderngl
 from moderngl import Texture, Framebuffer, Context, Program
 import numpy as np
 import pygame
-from importlib import resources
+from time import time
 
 
 def surface_to_texture(ctx: Context, sfc: pygame.Surface) -> moderngl.Texture:
@@ -108,10 +108,6 @@ if __name__ == '__main__':
     ctx = moderngl.create_context()
 
     # Load shader source code
-    # vertex_src = resources.read_text(
-    #     'pygame_render', 'vertex.glsl')
-    # fragment_src_draw = resources.read_text(
-    #     'pygame_render', 'fragment_draw.glsl')
     with open('vertex.glsl') as f:
         vertex_src = ''.join(f.readlines())
     with open('fragment_draw.glsl') as f:
@@ -132,13 +128,19 @@ if __name__ == '__main__':
     while running:
         # Tick the clock at 60 frames per second
         clock.tick(60)
+        t0 = time()
 
         # Render texture to screen
         render(ctx, tex, ctx.screen, position=(
-            100, 100), scale=16., section=pygame.Rect(0, 0, 8, 20), shader=prog_draw)
+            100, 100), scale=16., shader=prog_draw)
 
         # Update the display
         pygame.display.flip()
+
+        t = time()
+        mspt = (t-t0)*1000
+        pygame.display.set_caption(f'{mspt:.3f}')
+        t0 = t
 
         # Process events
         for event in pygame.event.get():
