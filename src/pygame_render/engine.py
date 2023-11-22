@@ -1,6 +1,6 @@
 from importlib import resources
 import moderngl
-from moderngl import Texture, Framebuffer, Context, Program
+from moderngl import Texture, Context, Program
 import numpy as np
 import pygame
 import numbers

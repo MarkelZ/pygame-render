@@ -1,4 +1,4 @@
-from moderngl import Texture, Framebuffer, Context, Program
+from moderngl import Texture, Framebuffer
 from pygame_render.util import normalize_color_arguments
 
 
