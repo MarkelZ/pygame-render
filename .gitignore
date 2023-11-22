@@ -161,3 +161,4 @@ cython_debug/
 
 # Render engine
 src/example*
+src/*.png
