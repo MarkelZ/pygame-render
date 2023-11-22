@@ -2,8 +2,9 @@ from importlib import resources
 import numbers
 
 import moderngl
-from moderngl import Texture, Context, Program
+from moderngl import Buffer, Texture, Context, Program
 import numpy as np
+from OpenGL.GL import glGetUniformBlockIndex, glUniformBlockBinding
 import pygame
 
 from pygame_render.layer import Layer
@@ -46,6 +47,9 @@ class RenderEngine:
         self._prog_draw = self._ctx.program(vertex_shader=vertex_src,
                                             fragment_shader=fragment_src_draw)
 
+        # Last binding sampled for uniform blocks
+        self._fresh_ub_binding = 1
+
     @property
     def screen(self) -> Layer:
         return self._screen
@@ -53,6 +57,11 @@ class RenderEngine:
     @property
     def ctx(self) -> Context:
         return self._ctx
+
+    def _sample_ub_binding(self) -> int:
+        b = self._fresh_ub_binding
+        self._fresh_ub_binding += 1
+        return b
 
     def surface_to_texture(self, sfc: pygame.Surface) -> moderngl.Texture:
         """
@@ -135,6 +144,31 @@ class RenderEngine:
             fragment_src = f.read()
 
         return self.make_shader(vertex_src, fragment_src)
+
+    def make_uniform_block(self, prog: Program, uniform_name: str, reserve: int) -> Buffer:
+        """
+        Create and configure a uniform block for a given OpenGL program.
+
+        Parameters:
+        - prog (Program): The OpenGL program for which the uniform block will be created.
+        - uniform_name (str): The name of the uniform block in the shader program.
+        - reserve (int): The size, in bytes, to reserve for the uniform block in the buffer.
+
+        Returns:
+        - Buffer: The OpenGL buffer object representing the uniform block.
+        """
+        # Program's GL object
+        prog_glo = prog.glo
+
+        # Bind uniform block to given binding
+        binding = self._sample_ub_binding()
+        block_index = glGetUniformBlockIndex(prog_glo, uniform_name)
+        glUniformBlockBinding(prog_glo, block_index, binding)
+
+        # Create the uniform block
+        ubo = self.ctx.buffer(reserve=reserve)
+        ubo.bind_to_uniform_block(binding)
+        return ubo
 
     def clear(self, R: (int | tuple[int]) = 0, G: int = 0, B: int = 0, A: int = 255):
         """
