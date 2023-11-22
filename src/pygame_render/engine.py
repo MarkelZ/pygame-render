@@ -3,7 +3,6 @@ import moderngl
 from moderngl import Texture, Framebuffer, Context, Program
 import numpy as np
 import pygame
-from math import radians, sin, cos
 import numbers
 
 from pygame_render.util import normalize_color_arguments, create_rotated_rect, to_dest_coords
@@ -29,7 +28,7 @@ class RenderEngine:
         # Create an OpenGL context
         self._ctx = moderngl.create_context()
 
-        # Read source files
+        # Read draw shader source files
         vertex_src = resources.read_text(
             'pygame_render', 'vertex.glsl')
         fragment_src_draw = resources.read_text(
@@ -78,6 +77,42 @@ class RenderEngine:
 
         img = pygame.image.load(path).convert_alpha()
         return self.surface_to_texture(img)
+
+    def make_shader(self, vertex_src: str, fragment_src: str) -> Program:
+        """
+        Creates a shader program using the provided vertex and fragment shader source code.
+
+        Parameters:
+        - vertex_src (str): A string containing the source code for the vertex shader.
+        - fragment_src (str): A string containing the source code for the fragment shader.
+
+        Returns:
+        - A ModernGL Program object representing the compiled shader program.
+
+        Note: If you want to load the shader source code from a file path, consider using the
+        'load_shader_from_path' method instead.
+        """
+        prog = self.ctx.program(vertex_shader=vertex_src,
+                                fragment_shader=fragment_src)
+        return prog
+
+    def load_shader_from_path(self, vertex_path: str, fragment_path: str) -> Program:
+        """
+        Loads shader source code from specified file paths and creates a shader program.
+
+        Parameters:
+        - vertex_path (str): File path to the vertex shader source code.
+        - fragment_path (str): File path to the fragment shader source code.
+
+        Returns:
+        - A ModernGL Program object representing the compiled shader program.
+        """
+        with open(vertex_path) as f:
+            vertex_src = f.read()
+        with open(fragment_path) as f:
+            fragment_src = f.read()
+
+        return self.make_shader(vertex_src, fragment_src)
 
     def clear(self, R: (int | tuple[int]) = 0, G: int = 0, B: int = 0, A: int = 255):
         """
