@@ -45,6 +45,8 @@ def create_rotated_rect(position, width, height, scale, angle):
 
     # Translate vertices
     x, y = position
+    x += half_w
+    y += half_h
     ps = [(px + x, py + y) for px, py in ps]
 
     return ps
