@@ -4,6 +4,7 @@ from moderngl import Texture, Framebuffer, Context, Program
 import numpy as np
 import pygame
 import numbers
+from pygame_render.layer import Layer
 
 from pygame_render.util import normalize_color_arguments, create_rotated_rect, to_dest_coords
 
@@ -28,6 +29,10 @@ class RenderEngine:
         # Create an OpenGL context
         self._ctx = moderngl.create_context()
 
+        # Create screen layer
+        self._screen = Layer(None, self._ctx.screen)
+        self._ctx.screen
+
         # Read draw shader source files
         vertex_src = resources.read_text(
             'pygame_render', 'vertex.glsl')
@@ -39,8 +44,8 @@ class RenderEngine:
                                             fragment_shader=fragment_src_draw)
 
     @property
-    def screen(self) -> Framebuffer:
-        return self._ctx.screen
+    def screen(self) -> Layer:
+        return self._screen
 
     @property
     def ctx(self) -> Context:
@@ -77,6 +82,20 @@ class RenderEngine:
 
         img = pygame.image.load(path).convert_alpha()
         return self.surface_to_texture(img)
+
+    def make_layer(self,
+                   size: tuple[int, int],
+                   components: int,
+                   data: bytes | None = None,
+                   samples: int = 0,
+                   alignment: int = 1,
+                   dtype: str = 'f1',
+                   internal_format: int | None = None) -> None:
+        tex = self.ctx.texture(size, components, data, samples=samples,
+                               alignment=alignment, dtype=dtype,
+                               internal_format=internal_format)
+        fbo = self.ctx.framebuffer([tex])
+        return Layer(tex, fbo)
 
     def make_shader(self, vertex_src: str, fragment_src: str) -> Program:
         """
@@ -116,7 +135,7 @@ class RenderEngine:
 
     def clear(self, R: (int | tuple[int]) = 0, G: int = 0, B: int = 0, A: int = 255):
         """
-        Clear the background with a color.
+        Clear the screen with a color.
 
         Args:
             R (int or tuple[int]): Red component value or tuple containing RGB or RGBA values (0-255).
@@ -129,7 +148,7 @@ class RenderEngine:
 
     def render(self,
                tex: Texture,
-               fbo: Framebuffer,
+               layer: Layer,
                position: tuple[float, float] = (0, 0),
                scale: tuple[float, float] | float = (1.0, 1.0),
                angle: float = 0.0,
@@ -140,7 +159,7 @@ class RenderEngine:
 
         Parameters:
         - tex (Texture): The texture to render.
-        - fbo (Framebuffer): The framebuffer to render onto.
+        - layer (Layer): The layer to render onto.
         - position (tuple[float, float]): The position (x, y) where the texture will be rendered. Default is (0, 0).
         - scale (tuple[float, float] | float): The scaling factor for the texture. Can be a tuple (x, y) or a scalar. Default is (1.0, 1.0).
         - angle (float): The rotation angle in degrees. Default is 0.0.
@@ -151,7 +170,7 @@ class RenderEngine:
         None
 
         Note:
-        - If the scale is a scalar, it will be applied uniformly to both x and y.
+        - If scale is a scalar, it will be applied uniformly to both x and y.
         - If section is None, the entire texture is used.
         - If section is larger than the texture, the texture is repeated to fill the section.
         - If shader is None, a default shader (_prog_draw) is used.
@@ -175,7 +194,7 @@ class RenderEngine:
                                      section.height, scale, angle)
 
         # Convert to destination coordinates
-        dest_width, dest_height = fbo.size
+        dest_width, dest_height = layer.size
         points = [to_dest_coords(p, dest_width, dest_height) for p in points]
 
         # Mesh for destination rect on screen
@@ -203,7 +222,7 @@ class RenderEngine:
 
         # Use buffers and render
         tex.use()
-        fbo.use()
+        layer.framebuffer.use()
         vao.render()
 
         # Free vertex data
