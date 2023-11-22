@@ -14,6 +14,6 @@ void main()
     color=texture(imageTexture,fragmentTexCoord);
     if(values[4]!=0)color.r+=values[0];
     if(values[5]!=0)color.g+=values[1];
-    if(values[6]!=0)color.g+=values[2];
-    if(values[7]!=0)color.g+=values[3];
+    if(values[6]!=0)color.b+=values[2];
+    if(values[7]!=0)color.a+=values[3];
 }

@@ -13,11 +13,14 @@ engine = RenderEngine((900, 600))
 # Load texture
 tex = engine.load_texture('sprite.png')
 
+# Load background texture
+tex_bg = engine.load_texture('clouds.png')
+
 # Make shader
 ubo_shader = engine.load_shader_from_path('vertex.glsl', 'fragment_ubo.glsl')
 
 # Array of values
-values = np.array([0.1, 0.5, 0.1, 0.0, 1, 1, 1, 1], dtype=np.float32)
+values = np.array([0.5, 0.5, 0.5, -0.5, 0, 0, 0, 0], dtype=np.float32)
 
 # Uniform buffer
 ubo = engine.make_uniform_block(ubo_shader, 'valuesUBO', values.nbytes)
@@ -35,6 +38,17 @@ while running:
 
     # Clear the screen
     engine.clear(255, 0, 255)
+
+    # Render background texture
+    engine.render(tex_bg, engine.screen, position=(0, 0),
+                  section=pygame.Rect(0, 0, tex_bg.width, tex_bg.height))
+
+    # Enable colors acording to keys
+    keys = pygame.key.get_pressed()
+    values[4] = 1 if keys[pygame.K_r] else 0
+    values[5] = 1 if keys[pygame.K_g] else 0
+    values[6] = 1 if keys[pygame.K_b] else 0
+    values[7] = 1 if keys[pygame.K_a] else 0
 
     # Send uniform block data
     ubo.write(values.tobytes())
