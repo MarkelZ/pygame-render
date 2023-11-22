@@ -1,0 +1,24 @@
+[build-system]
+requires = ["setuptools>=59.6.0", "wheel"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "pygame-render"
+version = "1.0.0"
+description = "Fast 2D render engine for Pygame."
+readme = "README.md"
+authors = [{ name = "Markel Zubia" }]
+license = { file = "LICENSE" }
+classifiers = [
+    "License :: OSI Approved :: MIT License",
+    "Programming Language :: Python",
+    "Programming Language :: Python :: 3",
+]
+keywords = ["pygame", "render", "shader", "pygame-ce", "2D"]
+dependencies = ["numpy>=1.24.1", "pygame>=2.3.0", "moderngl>=5.8.2"]
+requires-python = ">=3.10"
+
+[project.urls]
+Homepage = "https://github.com/MarkelZ/pygame-render"
+Documentation = "https://github.com/MarkelZ/pygame-render/wiki"
+"Bug Reports" = "https://github.com/MarkelZ/pygame-render/issues"
