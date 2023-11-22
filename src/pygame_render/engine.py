@@ -1,11 +1,12 @@
 from importlib import resources
+import numbers
+
 import moderngl
 from moderngl import Texture, Context, Program
 import numpy as np
 import pygame
-import numbers
-from pygame_render.layer import Layer
 
+from pygame_render.layer import Layer
 from pygame_render.util import normalize_color_arguments, create_rotated_rect, to_dest_coords
 
 
