@@ -28,6 +28,8 @@ class RenderEngine:
 
         # Create an OpenGL context
         self._ctx = moderngl.create_context()
+        self._ctx.enable(moderngl.BLEND)
+        self._ctx.blend_func = self._ctx.SRC_ALPHA, self._ctx.ONE_MINUS_SRC_ALPHA
 
         # Create screen layer
         self._screen = Layer(None, self._ctx.screen)

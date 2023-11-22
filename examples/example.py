@@ -24,7 +24,7 @@ while running:
     t0 = time()
 
     # Clear the screen
-    engine.clear()
+    engine.clear(255, 0, 255)
 
     # Update the time and angle
     total_time += clock.get_time()
