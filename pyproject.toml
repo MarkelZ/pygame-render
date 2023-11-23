@@ -14,8 +14,13 @@ classifiers = [
     "Programming Language :: Python",
     "Programming Language :: Python :: 3",
 ]
-keywords = ["pygame", "render", "shader", "pygame-ce", "2D"]
-dependencies = ["numpy>=1.22.0", "pygame>=2.1.0", "moderngl>=5.8.2"]
+keywords = ["pygame", "render", "shader", "shaders", "pygame-ce", "2D"]
+dependencies = [
+    "numpy>=1.22.0",
+    "pygame>=2.1.0",
+    "moderngl>=5.8.2",
+    "PyOpenGL>=3.1.6",
+]
 requires-python = ">=3.10"
 
 [project.urls]
