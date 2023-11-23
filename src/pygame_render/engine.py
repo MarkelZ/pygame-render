@@ -12,8 +12,8 @@ from pygame_render.util import normalize_color_arguments, create_rotated_rect, t
 
 
 class RenderEngine:
-    def __init__(self, screen_res: tuple[int, int]) -> None:
-        self._screen_res = screen_res
+    def __init__(self, screen_width: int, screen_height: int) -> None:
+        self._screen_res = (screen_width, screen_height)
 
         # Check that pygame has been initialized
         assert pygame.get_init(), 'Error: Pygame is not initialized. Please ensure you call pygame.init() before using the lighting engine.'
@@ -103,6 +103,21 @@ class RenderEngine:
                    alignment: int = 1,
                    dtype: str = 'f1',
                    internal_format: int | None = None) -> None:
+        """
+        Create a rendering layer with optional parameters. A layer consists of a texture and a framebuffer.
+
+        Parameters:
+        - size (tuple[int, int]): The dimensions (width, height) of the texture.
+        - components (int): The number of components per texel (e.g., 1 for red, 3 for RGB, 4 for RGBA).
+        - data (bytes | None): Optional initial data for the texture. If None, the texture data is uninitialized.
+        - samples (int): The number of samples. Value 0 means no multisample format.
+        - alignment (int): The byte alignment 1, 2, 4 or 8.
+        - dtype (str): Data type.
+        - internal_format (int): Override the internal format of the texture (IF needed).
+
+        Returns:
+        - None
+        """
         tex = self.ctx.texture(size, components, data, samples=samples,
                                alignment=alignment, dtype=dtype,
                                internal_format=internal_format)
@@ -192,7 +207,7 @@ class RenderEngine:
                section: pygame.Rect | None = None,
                shader: Program = None) -> None:
         """
-        Render a texture onto a framebuffer with optional transformations.
+        Render a texture onto a layer with optional transformations.
 
         Parameters:
         - tex (Texture): The texture to render.

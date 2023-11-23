@@ -7,7 +7,7 @@ from pygame_render.engine import RenderEngine
 pygame.init()
 
 # Create a render engine
-engine = RenderEngine((900, 600))
+engine = RenderEngine(900, 600)
 
 # Load texture
 tex = engine.load_texture('sprite.png')

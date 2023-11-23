@@ -8,8 +8,8 @@ from pygame_render.engine import RenderEngine
 pygame.init()
 
 # Create a render engine
-res = (1280, 720)
-engine = RenderEngine(res)
+width, height = 1280, 720
+engine = RenderEngine(width, height)
 
 # Load texture
 tex = engine.load_texture('sprite.png')
@@ -19,8 +19,8 @@ clock = pygame.time.Clock()
 
 # Positions
 num_sprites = 1000
-w, h = res
-positions = [(randint(0, w), randint(0, h)) for _ in range(num_sprites)]
+positions = [(randint(0, width), randint(0, height))
+             for _ in range(num_sprites)]
 
 # Load shader
 shader_glow = engine.load_shader_from_path('vertex.glsl', 'fragment_glow.glsl')
