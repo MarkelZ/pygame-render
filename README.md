@@ -1,6 +1,6 @@
 # Pygame Render
 
-Python package for 2D graphics rendering using shaders for Pygame.
+Python package for rendering 2D graphics with shaders for Pygame.
 
 ## System requirements
 
