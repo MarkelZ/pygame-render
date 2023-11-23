@@ -10,7 +10,7 @@ pygame.init()
 engine = RenderEngine((900, 600))
 
 # Load texture
-tex = engine.load_texture('animation_sheet.png')
+tex = engine.load_texture('sprite_sheet.png')
 
 # Clock
 clock = pygame.time.Clock()
@@ -36,7 +36,6 @@ while running:
     # Render texture to screen
     selection = pygame.Rect(frame_width * int(anim_ind),
                             0, frame_width, frame_height)
-    print(selection)
     engine.render(tex, engine.screen, position=(200, 200), scale=16.,
                   section=selection)
 
