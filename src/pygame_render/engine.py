@@ -12,7 +12,27 @@ from pygame_render.util import normalize_color_arguments, create_rotated_rect, t
 
 
 class RenderEngine:
+    """
+    A rendering engine for 2D graphics using Pygame and ModernGL.
+
+    This class initializes a rendering environment, including setting up Pygame for window creation,
+    configuring OpenGL with ModernGL, and loading shaders for drawing. It provides a simple interface
+    for creating and managing rendering layers, as well as drawing operations using shaders.
+    """
+
     def __init__(self, screen_width: int, screen_height: int) -> None:
+        """
+        Initialize a rendering engine using Pygame and ModernGL.
+
+        Parameters:
+        - screen_width (int): The width of the rendering window.
+        - screen_height (int): The height of the rendering window.
+
+        Raises:
+        - AssertionError: If Pygame is not initialized. Call pygame.init() before using the rendering engine.
+
+        Note: Make sure to call pygame.init() before creating an instance of RenderEngine.
+        """
         self._screen_res = (screen_width, screen_height)
 
         # Check that pygame has been initialized
@@ -52,10 +72,12 @@ class RenderEngine:
 
     @property
     def screen(self) -> Layer:
+        """Get the screen layer."""
         return self._screen
 
     @property
     def ctx(self) -> Context:
+        """Get the ModernGL rendering context."""
         return self._ctx
 
     def _sample_ub_binding(self) -> int:

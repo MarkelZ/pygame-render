@@ -3,21 +3,37 @@ from pygame_render.util import normalize_color_arguments
 
 
 class Layer:
+    """
+    A rendering layer consisting of a texture and a framebuffer.
+
+    Note: A Layer object cannot be instantiated directly. 
+    Use RenderEngine.make_layer to create one.
+    """
 
     def __init__(self, tex: Texture, fbo: Framebuffer) -> None:
+        """
+        Initialize a Layer with a given texture and framebuffer.
+
+        Note: A Layer object cannot be instantiated directly. 
+        Use RenderEngine.make_layer to create one.
+        """
+
         self._tex = tex
         self._fbo = fbo
 
     @property
     def texture(self) -> Texture:
+        """Get the texture associated with the layer."""
         return self._tex
 
     @property
     def framebuffer(self) -> Framebuffer:
+        """Get the framebuffer associated with the layer."""
         return self._fbo
 
     @property
     def size(self) -> tuple[int, int]:
+        """Get the size (width, height) of the layer."""
         return self._fbo.size
 
     def clear(self, R: (int | tuple[int]) = 0, G: int = 0, B: int = 0, A: int = 255):
