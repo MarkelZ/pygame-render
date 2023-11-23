@@ -1,7 +1,7 @@
 from random import randint
 from time import time
 import pygame
-from pygame_render.engine import RenderEngine
+from pygame_render import RenderEngine
 
 
 # Initialize pygame

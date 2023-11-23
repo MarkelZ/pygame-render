@@ -1,7 +1,7 @@
 from time import time
 import numpy as np
 import pygame
-from pygame_render.engine import RenderEngine
+from pygame_render import RenderEngine
 
 
 # Initialize pygame
