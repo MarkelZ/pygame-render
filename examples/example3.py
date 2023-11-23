@@ -19,8 +19,9 @@ clock = pygame.time.Clock()
 running = True
 total_time = 0
 anim_ind = 0
-anim_frames = 18
-frame_size = 32
+anim_frames = 4
+frame_width = 15
+frame_height = 22
 while running:
     # Tick the clock at 60 frames per second
     clock.tick(60)
@@ -33,11 +34,14 @@ while running:
     total_time += clock.get_time()
 
     # Render texture to screen
+    selection = pygame.Rect(frame_width * int(anim_ind),
+                            0, frame_width, frame_height)
+    print(selection)
     engine.render(tex, engine.screen, position=(200, 200), scale=16.,
-                  section=pygame.Rect(frame_size * int(anim_ind), 0, frame_size, frame_size))
+                  section=selection)
 
     # Update anim
-    anim_ind = (anim_ind + 0.1) % anim_frames
+    anim_ind = anim_ind + 0.1
     while anim_ind >= anim_frames:
         anim_ind -= anim_frames
 
