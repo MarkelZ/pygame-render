@@ -2,12 +2,13 @@ from importlib import resources
 import numbers
 
 import moderngl
-from moderngl import Buffer, Texture, Context, Program
+from moderngl import Texture, Context
 import numpy as np
 from OpenGL.GL import glGetUniformBlockIndex, glUniformBlockBinding
 import pygame
 
 from pygame_render.layer import Layer
+from pygame_render.shader import Shader
 from pygame_render.util import normalize_color_arguments, create_rotated_rect, to_dest_coords
 
 
@@ -64,11 +65,9 @@ class RenderEngine:
             'pygame_render', 'fragment_draw.glsl')
 
         # Create draw shader program
-        self._prog_draw = self._ctx.program(vertex_shader=vertex_src,
-                                            fragment_shader=fragment_src_draw)
-
-        # Last binding sampled for uniform blocks
-        self._fresh_ub_binding = 1
+        prog_draw = self._ctx.program(vertex_shader=vertex_src,
+                                      fragment_shader=fragment_src_draw)
+        self._shader_draw = Shader(prog_draw)
 
     @property
     def screen(self) -> Layer:
@@ -79,11 +78,6 @@ class RenderEngine:
     def ctx(self) -> Context:
         """Get the ModernGL rendering context."""
         return self._ctx
-
-    def _sample_ub_binding(self) -> int:
-        b = self._fresh_ub_binding
-        self._fresh_ub_binding += 1
-        return b
 
     def surface_to_texture(self, sfc: pygame.Surface) -> moderngl.Texture:
         """
@@ -146,7 +140,7 @@ class RenderEngine:
         fbo = self.ctx.framebuffer([tex])
         return Layer(tex, fbo)
 
-    def make_shader(self, vertex_src: str, fragment_src: str) -> Program:
+    def make_shader(self, vertex_src: str, fragment_src: str) -> Shader:
         """
         Creates a shader program using the provided vertex and fragment shader source code.
 
@@ -155,16 +149,17 @@ class RenderEngine:
         - fragment_src (str): A string containing the source code for the fragment shader.
 
         Returns:
-        - A ModernGL Program object representing the compiled shader program.
+        - A Shader object representing the compiled shader program.
 
         Note: If you want to load the shader source code from a file path, consider using the
         'load_shader_from_path' method instead.
         """
         prog = self.ctx.program(vertex_shader=vertex_src,
                                 fragment_shader=fragment_src)
-        return prog
+        shader = Shader(prog)
+        return shader
 
-    def load_shader_from_path(self, vertex_path: str, fragment_path: str) -> Program:
+    def load_shader_from_path(self, vertex_path: str, fragment_path: str) -> Shader:
         """
         Loads shader source code from specified file paths and creates a shader program.
 
@@ -173,7 +168,7 @@ class RenderEngine:
         - fragment_path (str): File path to the fragment shader source code.
 
         Returns:
-        - A ModernGL Program object representing the compiled shader program.
+        - A Shader object representing the compiled shader program.
         """
         with open(vertex_path) as f:
             vertex_src = f.read()
@@ -182,30 +177,27 @@ class RenderEngine:
 
         return self.make_shader(vertex_src, fragment_src)
 
-    def make_uniform_block(self, prog: Program, uniform_name: str, reserve: int) -> Buffer:
+    def reserve_uniform_block(self, shader: Shader, ubo_name: str, nbytes: int) -> None:
         """
-        Create and configure a uniform block for a given OpenGL program.
+        Allocate the memory for a uniform block in a given shader.
 
         Parameters:
-        - prog (Program): The OpenGL program for which the uniform block will be created.
-        - uniform_name (str): The name of the uniform block in the shader program.
-        - reserve (int): The size, in bytes, to reserve for the uniform block in the buffer.
-
-        Returns:
-        - Buffer: The OpenGL buffer object representing the uniform block.
+        - shader (Shader): The shader program for which the uniform block will be reserved.
+        - ubo_name (str): The name of the uniform block in the shader program.
+        - nbytes (int): The size, in bytes, to reserve for the uniform block in the buffer.
         """
         # Program's GL object
-        prog_glo = prog.glo
+        prog_glo = shader.program.glo
 
         # Bind uniform block to given binding
-        binding = self._sample_ub_binding()
-        block_index = glGetUniformBlockIndex(prog_glo, uniform_name)
+        binding = shader.sample_ubo_binding()
+        block_index = glGetUniformBlockIndex(prog_glo, ubo_name)
         glUniformBlockBinding(prog_glo, block_index, binding)
 
         # Create the uniform block
-        ubo = self.ctx.buffer(reserve=reserve)
+        ubo = self.ctx.buffer(reserve=nbytes)
         ubo.bind_to_uniform_block(binding)
-        return ubo
+        shader.add_ubo(ubo, ubo_name)
 
     def clear(self, R: (int | tuple[int]) = 0, G: int = 0, B: int = 0, A: int = 255):
         """
@@ -227,7 +219,7 @@ class RenderEngine:
                scale: tuple[float, float] | float = (1.0, 1.0),
                angle: float = 0.0,
                section: pygame.Rect | None = None,
-               shader: Program = None) -> None:
+               shader: Shader = None) -> None:
         """
         Render a texture onto a layer with optional transformations.
 
@@ -238,7 +230,7 @@ class RenderEngine:
         - scale (tuple[float, float] | float): The scaling factor for the texture. Can be a tuple (x, y) or a scalar. Default is (1.0, 1.0).
         - angle (float): The rotation angle in degrees. Default is 0.0.
         - section (pygame.Rect | None): The section of the texture to render. If None, the entire texture is rendered. Default is None.
-        - shader (Program): The shader program to use for rendering. If None, a default shader is used. Default is None.
+        - shader (Shader): The shader program to use for rendering. If None, a default shader is used. Default is None.
 
         Returns:
         None
@@ -256,7 +248,7 @@ class RenderEngine:
 
         # Default to draw shader program if none
         if shader == None:
-            shader = self._prog_draw
+            shader = self._shader_draw
 
         # If the scale is not a tuple but a scalar, convert it into a tuple
         if isinstance(scale, numbers.Number):
@@ -290,7 +282,7 @@ class RenderEngine:
         buffer_data = np.hstack([vertex_coords, tex_coords])
 
         vbo = self._ctx.buffer(buffer_data)
-        vao = self._ctx.vertex_array(shader, [
+        vao = self._ctx.vertex_array(shader.program, [
             (vbo, '2f 2f', 'vertexPos', 'vertexTexCoord'),
         ])
 

@@ -23,7 +23,7 @@ ubo_shader = engine.load_shader_from_path('vertex.glsl', 'fragment_ubo.glsl')
 values = np.array([0.5, 0.5, 0.5, -0.5, 0, 0, 0, 0], dtype=np.float32)
 
 # Uniform buffer
-ubo = engine.make_uniform_block(ubo_shader, 'valuesUBO', values.nbytes)
+engine.reserve_uniform_block(ubo_shader, 'valuesUBO', values.nbytes)
 
 # Clock
 clock = pygame.time.Clock()
@@ -51,7 +51,7 @@ while running:
     values[7] = 1 if keys[pygame.K_a] else 0
 
     # Send uniform block data
-    ubo.write(values.tobytes())
+    ubo_shader['valuesUBO'] = values.tobytes()
 
     # Render texture to screen
     engine.render(tex, engine.screen,
