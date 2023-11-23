@@ -29,12 +29,13 @@ except Exception as e:
 # Local modules
 from .engine import RenderEngine
 from .layer import Layer
+from .shader import Shader
 from moderngl import Program, Buffer, Framebuffer, Texture
 
 NEAREST = moderngl.NEAREST
 LINEAR = moderngl.LINEAR
 
-__all__ = ['RenderEngine', 'Layer', 'Program', 'Buffer',
+__all__ = ['RenderEngine', 'Layer', 'Shader', 'Program', 'Buffer',
            'Framebuffer', 'Texture', 'NEAREST', 'LINEAR']
 
 # Version of the pygame_render package
