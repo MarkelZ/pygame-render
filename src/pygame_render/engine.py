@@ -286,10 +286,18 @@ class RenderEngine:
             (vbo, '2f 2f', 'vertexPos', 'vertexTexCoord'),
         ])
 
-        # Use buffers and render
+        # Use textures
         tex.use()
+        shader.bind_sampler2D_uniforms()
+
+        # Set layer as target
         layer.framebuffer.use()
+
+        # Render
         vao.render()
+
+        # Clear the sampler2D locations
+        shader.clear_sampler2D_uniforms()
 
         # Free vertex data
         vbo.release()
