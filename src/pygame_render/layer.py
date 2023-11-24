@@ -48,3 +48,10 @@ class Layer:
         """
         R, G, B, A = normalize_color_arguments(R, G, B, A)
         self._fbo.clear(R, G, B, A)
+
+    def release(self):
+        """
+        Release the ModernGL object associated with the layer.
+        """
+        self._tex.release()
+        self._fbo.release()

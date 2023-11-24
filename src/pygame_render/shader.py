@@ -72,3 +72,11 @@ class Shader:
         Add a UBO with a specified name to the Shader.
         """
         self._ubo_dict[name] = ubo
+
+    def release(self):
+        """
+        Release the ModernGL objects associated with the shader.
+        """
+        for ubo in self._ubo_dict.values():
+            ubo.release()
+        self._program.release()
