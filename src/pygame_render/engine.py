@@ -118,7 +118,7 @@ class RenderEngine:
                    samples: int = 0,
                    alignment: int = 1,
                    dtype: str = 'f1',
-                   internal_format: int | None = None) -> None:
+                   internal_format: int | None = None) -> Layer:
         """
         Create a rendering layer with optional parameters. A layer consists of a texture and a framebuffer.
 
