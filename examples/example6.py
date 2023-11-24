@@ -25,8 +25,8 @@ clock = pygame.time.Clock()
 running = True
 start_time = time()
 while running:
-    # Tick the clock at 60 frames per second
-    clock.tick(60)
+    # Tick the clock at 10 frames per second
+    clock.tick(10)
 
     # Clear the screen
     engine.clear(255, 0, 255)
@@ -45,6 +45,9 @@ while running:
 
     # Render both textures to screen using the mask shader
     engine.render(tex_clouds, engine.screen, shader=shader_mask)
+
+    # Release texture's allocated memory
+    font_texture.release()
 
     # Update the display
     pygame.display.flip()
