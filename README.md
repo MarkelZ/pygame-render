@@ -2,6 +2,8 @@
 
 Python package for rendering 2D graphics with shaders for Pygame.
 
+![screenshot](screenshot.png)
+
 ## System requirements
 
 - `Python` version >= 3.10
