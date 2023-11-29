@@ -132,7 +132,7 @@ class RenderEngine:
         - internal_format (int): Override the internal format of the texture (IF needed).
 
         Returns:
-        - None
+        - Layer
         """
         tex = self.ctx.texture(size, components, data, samples=samples,
                                alignment=alignment, dtype=dtype,

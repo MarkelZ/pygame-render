@@ -41,7 +41,7 @@ class Shader:
         - key: The name of the uniform variable, UBO, or sampler2D.
 
         Returns:
-        - Union[Buffer, any]: The value associated with the specified key.
+        - Union[Buffer, Texture, any]: The value associated with the specified key.
         """
         if key in self._ubo_dict:  # UBO
             return self._ubo_dict[key]
