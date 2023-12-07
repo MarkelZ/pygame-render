@@ -230,7 +230,7 @@ class RenderEngine:
         - position (tuple[float, float]): The position (x, y) where the texture will be rendered. Default is (0, 0).
         - scale (tuple[float, float] | float): The scaling factor for the texture. Can be a tuple (x, y) or a scalar. Default is (1.0, 1.0).
         - angle (float): The rotation angle in degrees. Default is 0.0.
-        - scale (tuple[bool, bool] | bool): Whether to flip the texture. Can be a tuple (flip x axis, flip y axis) or a boolean (flip x axis). Default is (False, False).
+        - flip (tuple[bool, bool] | bool): Whether to flip the texture. Can be a tuple (flip x axis, flip y axis) or a boolean (flip x axis). Default is (False, False).
         - section (pygame.Rect | None): The section of the texture to render. If None, the entire texture is rendered. Default is None.
         - shader (Shader): The shader program to use for rendering. If None, a default shader is used. Default is None.
 
