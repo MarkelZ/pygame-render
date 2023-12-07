@@ -21,7 +21,7 @@ def denormalize_color(col):
     return (int(x * 255) for x in col)
 
 
-def create_rotated_rect(position, width, height, scale, angle):
+def create_rotated_rect(position, width, height, scale, angle, flip):
     # Scale rect
     w = scale[0] * width
     h = scale[1] * height
@@ -41,13 +41,22 @@ def create_rotated_rect(position, width, height, scale, angle):
     p2 = (-half_w_cos - half_h_sin, -half_w_sin + half_h_cos)
     p3 = (-half_w_cos + half_h_sin, -half_w_sin - half_h_cos)
     p4 = (half_w_cos + half_h_sin, half_w_sin - half_h_cos)
-    ps = [p1, p2, p3, p4]
+
+    # Flip horizontally
+    if flip[0]:
+        p3, p4 = p4, p3
+        p1, p2 = p2, p1
+
+    # Flip vertically
+    if flip[1]:
+        p2, p3 = p3, p2
+        p1, p4 = p4, p1
 
     # Translate vertices
     x, y = position
     x += half_w
     y += half_h
-    ps = [(px + x, py + y) for px, py in ps]
+    ps = [(px + x, py + y) for (px, py) in [p1, p2, p3, p4]]
 
     return ps
 

@@ -218,6 +218,7 @@ class RenderEngine:
                position: tuple[float, float] = (0, 0),
                scale: tuple[float, float] | float = (1.0, 1.0),
                angle: float = 0.0,
+               flip: tuple[bool, bool] | bool = (False, False),
                section: pygame.Rect | None = None,
                shader: Shader = None) -> None:
         """
@@ -229,6 +230,7 @@ class RenderEngine:
         - position (tuple[float, float]): The position (x, y) where the texture will be rendered. Default is (0, 0).
         - scale (tuple[float, float] | float): The scaling factor for the texture. Can be a tuple (x, y) or a scalar. Default is (1.0, 1.0).
         - angle (float): The rotation angle in degrees. Default is 0.0.
+        - scale (tuple[bool, bool] | bool): Whether to flip the texture. Can be a tuple (flip x axis, flip y axis) or a boolean (flip x axis). Default is (False, False).
         - section (pygame.Rect | None): The section of the texture to render. If None, the entire texture is rendered. Default is None.
         - shader (Shader): The shader program to use for rendering. If None, a default shader is used. Default is None.
 
@@ -237,6 +239,7 @@ class RenderEngine:
 
         Note:
         - If scale is a scalar, it will be applied uniformly to both x and y.
+        - If flip is a boolean, it will only affect the x axis.
         - If section is None, the entire texture is used.
         - If section is larger than the texture, the texture is repeated to fill the section.
         - If shader is None, a default shader (_prog_draw) is used.
@@ -254,10 +257,14 @@ class RenderEngine:
         if isinstance(scale, numbers.Number):
             scale = (scale, scale)
 
+        # If flip is not a tuple but a boolean, convert it into a tuple
+        if isinstance(flip, bool):
+            flip = (flip, False)
+
         # Get the vertex coordinates of a rectangle that has been rotated,
         # scaled, and translated, in world coordinates
         points = create_rotated_rect(position, section.width,
-                                     section.height, scale, angle)
+                                     section.height, scale, angle, flip)
 
         # Convert to destination coordinates
         dest_width, dest_height = layer.size
