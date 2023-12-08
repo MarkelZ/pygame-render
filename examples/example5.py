@@ -13,7 +13,7 @@ engine = RenderEngine(900, 600)
 tex = engine.load_texture('sprite.png')
 
 # Main layer
-layer: Layer = engine.make_layer(size=(90, 60), components=4)
+layer: Layer = engine.make_layer(size=(90, 60))
 scale = engine.screen.size[0] // layer.size[0]
 
 # This is for pixelated scaling, otherwise it looks blurry

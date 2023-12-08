@@ -113,7 +113,7 @@ class RenderEngine:
 
     def make_layer(self,
                    size: tuple[int, int],
-                   components: int,
+                   components: int = 4,
                    data: bytes | None = None,
                    samples: int = 0,
                    alignment: int = 1,
