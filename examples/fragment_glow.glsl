@@ -7,10 +7,12 @@ uniform float time;
 
 out vec4 color;
 
+const float SCALE_GLOW=.2f;
+const float SCALE_TIME=.005f;
+
 void main()
 {
     color=texture(imageTexture,fragmentTexCoord);
-    float intensity=(sin(time*.005)+1)*.2;
-    color.r+=intensity;
-    color.g+=intensity;
+    float intensity=(sin(time*SCALE_TIME)+1)*SCALE_GLOW;
+    color+=intensity*vec4(1,1,0,0);
 }
