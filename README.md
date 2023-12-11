@@ -40,11 +40,15 @@ To learn the basics of `pygame-render`, check out the [Getting started](https://
 
 You can also take a look at the examples in the [`examples/`](https://github.com/MarkelZ/pygame_render/tree/main/examples) directory.
 
+For detailed explanations of the API, please refer to the [API Reference](https://github.com/MarkelZ/pygame-render/wiki/API-Reference)
+
 ## Contributing
 
 We greatly appreciate and encourage contributions from the community! 
 
-Please take a look at the [Contributing](https://github.com/MarkelZ/pygame_render/wiki/Contributing) page on the wiki for details on how to contribute to the project.
+If you want to report a bug or request a new feature, feel free to open an issue in the [issue tracker](https://github.com/MarkelZ/pygame-render/issues).
+
+For code contributions, please check out [Contributing](https://github.com/MarkelZ/pygame_render/wiki/Contributing) for details.
 
 ## License
 
