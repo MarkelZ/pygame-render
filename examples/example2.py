@@ -36,14 +36,14 @@ while running:
     # Clear the screen
     engine.clear(64, 128, 64)
 
-    # Update the time and angle
+    # Update the time
     total_time += clock.get_time()
-    angle = total_time * 0.05
 
     # Send time uniform to glow shader
     shader_glow['time'] = total_time
 
     # Render texture to screen
+    angle = total_time * 0.05
     for p in positions:
         engine.render(tex, engine.screen,
                       position=p, scale=16., angle=angle, shader=shader_glow)
