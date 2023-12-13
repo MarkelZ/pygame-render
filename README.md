@@ -41,16 +41,16 @@ You can also take a look at the examples in the [`examples/`](https://github.com
 
 For detailed explanations of the API, please refer to the [API Reference](https://github.com/MarkelZ/pygame-render/wiki/API-Reference)
 
-## Frequently Asked Questions
-
-For frequently asked questions, check out [FAQ](https://github.com/MarkelZ/pygame-render/wiki/FAQ).
-
 ## Python package dependencies
 
 - `numpy` >=1.22.0
 - `pygame` >=2.1.0
 - `moderngl` >= 5.8.2
 - `PyOpenGL` >= 3.1.6
+
+## Frequently Asked Questions
+
+For frequently asked questions, check out [FAQ](https://github.com/MarkelZ/pygame-render/wiki/FAQ).
 
 ## Contributing
 
