@@ -1,6 +1,6 @@
 from time import time
 import pygame
-from pygame_render import RenderEngine, Layer, NEAREST
+from pygame_render import RenderEngine, Layer
 
 
 # Initialize pygame
@@ -15,9 +15,6 @@ tex = engine.load_texture('sprite.png')
 # Main layer
 layer: Layer = engine.make_layer(size=(90, 60))
 scale = engine.screen.size[0] // layer.size[0]
-
-# This is for pixelated scaling, otherwise it looks blurry
-layer.texture.filter = (NEAREST, NEAREST)
 
 # Clock
 clock = pygame.time.Clock()

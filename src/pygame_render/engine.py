@@ -2,7 +2,7 @@ from importlib import resources
 import numbers
 
 import moderngl
-from moderngl import Texture, Context
+from moderngl import Texture, Context, NEAREST
 import numpy as np
 from OpenGL.GL import glGetUniformBlockIndex, glUniformBlockBinding
 import pygame
@@ -137,6 +137,7 @@ class RenderEngine:
         tex = self.ctx.texture(size, components, data, samples=samples,
                                alignment=alignment, dtype=dtype,
                                internal_format=internal_format)
+        tex.filter = (NEAREST, NEAREST)
         fbo = self.ctx.framebuffer([tex])
         return Layer(tex, fbo)
 
