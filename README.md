@@ -42,6 +42,10 @@ You can also take a look at the examples in the [`examples/`](https://github.com
 
 For detailed explanations of the API, please refer to the [API Reference](https://github.com/MarkelZ/pygame-render/wiki/API-Reference)
 
+## Frequently Asked Questions
+
+For frequently asked questions, check out [FAQ](https://github.com/MarkelZ/pygame-render/wiki/FAQ).
+
 ## Contributing
 
 We greatly appreciate and encourage contributions from the community! 
