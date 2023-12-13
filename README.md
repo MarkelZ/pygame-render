@@ -35,7 +35,7 @@ If there are no errors, the installation was successful!
 
 ## Getting started
 
-To learn the basics of `pygame-render`, check out the [Getting started](https://github.com/MarkelZ/pygame_render/wiki/Getting-Started) page on the wiki.
+To learn about the features of `pygame-render`, check out the [Feature Walkthrough](https://github.com/MarkelZ/pygame_render/wiki/Feature-Walkthrough) page on the wiki.
 
 You can also take a look at the examples in the [`examples/`](https://github.com/MarkelZ/pygame_render/tree/main/examples) directory.
 
