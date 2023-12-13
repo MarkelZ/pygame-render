@@ -9,6 +9,12 @@ Python package for rendering 2D graphics with shaders for Pygame.
 - `Python` version >= 3.10
 - `OpenGL` version >= 3.3
 
+## Supported platforms
+
+✅ **Windows**  
+✅ **Mac**  
+✅ **Linux**  
+
 ## Python package dependencies
 
 - `numpy` >=1.22.0
