@@ -2,7 +2,7 @@
 
 Python package for rendering 2D graphics with shaders for Pygame.
 
-![screenshot](screenshot.png)
+![screenshot.png](screenshot.png)
 
 ## System requirements
 
@@ -39,10 +39,11 @@ To learn about the features of `pygame-render`, check out the [Feature Walkthrou
 
 You can also take a look at the examples in the [`examples/`](https://github.com/MarkelZ/pygame_render/tree/main/examples) directory.
 
-For detailed explanations of the API, please refer to the [API Reference](https://github.com/MarkelZ/pygame-render/wiki/API-Reference)
+For detailed explanations of the API, please refer to the [API Reference](https://github.com/MarkelZ/pygame-render/wiki/API-Reference).
 
 ## Python package dependencies
 
+These packages will be automatically installed by `pip` along with `pygame-render`:
 - `numpy` >=1.22.0
 - `pygame` >=2.1.0
 - `moderngl` >= 5.8.2
