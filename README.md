@@ -1,6 +1,6 @@
 # Pygame Render
 
-Python package for rendering 2D graphics with shaders for Pygame.
+Python package for rendering 2D graphics with shaders in Pygame.
 
 ![screenshot.png](screenshot.png)
 
