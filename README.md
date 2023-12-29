@@ -41,6 +41,8 @@ You can also take a look at the examples in the [`examples/`](https://github.com
 
 For detailed explanations of the API, please refer to the [API Reference](https://github.com/MarkelZ/pygame-render/wiki/API-Reference).
 
+Tutorial video: https://youtu.be/mlm66OJZaA0
+
 ## Python package dependencies
 
 These packages will be automatically installed by `pip` along with `pygame-render`:
