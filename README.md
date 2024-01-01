@@ -1,6 +1,6 @@
 # Pygame Render
 
-Python package for rendering 2D graphics with shaders for Pygame.
+Python package for rendering 2D graphics with shaders in Pygame.
 
 ![screenshot.png](screenshot.png)
 
@@ -40,6 +40,8 @@ To learn about the features of `pygame-render`, check out the [Feature Walkthrou
 You can also take a look at the examples in the [`examples/`](https://github.com/MarkelZ/pygame_render/tree/main/examples) directory.
 
 For detailed explanations of the API, please refer to the [API Reference](https://github.com/MarkelZ/pygame-render/wiki/API-Reference).
+
+Tutorial video: https://youtu.be/mlm66OJZaA0
 
 ## Python package dependencies
 
