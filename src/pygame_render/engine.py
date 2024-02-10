@@ -21,7 +21,10 @@ class RenderEngine:
     for creating and managing rendering layers, as well as drawing operations using shaders.
     """
 
-    def __init__(self, screen_width: int, screen_height: int) -> None:
+    def __init__(self, screen_width: int, screen_height: int,
+                 fullscreen: int | bool = 0, resizable: int | bool = 0,
+                 noframe: int | bool = 0, scaled: int | bool = 0,
+                 depth: int = 0, display: int = 0, vsync: int = 0) -> None:
         """
         Initialize a rendering engine using Pygame and ModernGL.
 
@@ -34,7 +37,6 @@ class RenderEngine:
 
         Note: Make sure to call pygame.init() before creating an instance of RenderEngine.
         """
-        self._screen_res = (screen_width, screen_height)
 
         # Check that pygame has been initialized
         assert pygame.get_init(), 'Error: Pygame is not initialized. Please ensure you call pygame.init() before using the lighting engine.'
@@ -46,8 +48,18 @@ class RenderEngine:
             pygame.GL_CONTEXT_PROFILE_MASK, pygame.GL_CONTEXT_PROFILE_CORE)
 
         # Configure pygame display
+        self._screen_res = (screen_width, screen_height)
+        flags = pygame.OPENGL | pygame.DOUBLEBUF
+        if fullscreen:
+            flags |= pygame.FULLSCREEN
+        if resizable:
+            flags |= pygame.RESIZABLE
+        if noframe:
+            flags |= pygame.NOFRAME
+        if scaled:
+            flags |= pygame.SCALED
         pygame.display.set_mode(
-            self._screen_res, pygame.HWSURFACE | pygame.OPENGL | pygame.DOUBLEBUF)
+            self._screen_res, flags, depth=depth, display=display, vsync=vsync)
 
         # Create an OpenGL context
         self._ctx = moderngl.create_context()
