@@ -30,9 +30,6 @@ while running:
     # Clear the screen
     engine.clear(255, 0, 255)
 
-    # Update the time and angle
-    total_time += clock.get_time()
-
     # Render texture to screen
     selection = pygame.Rect(frame_width * int(anim_ind),
                             0, frame_width, frame_height)
@@ -51,7 +48,6 @@ while running:
     t = time()
     mspt = (t-t0)*1000
     pygame.display.set_caption(f'{mspt:.3f} ms per tick')
-    t0 = t
 
     # Process events
     for event in pygame.event.get():

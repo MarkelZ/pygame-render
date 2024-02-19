@@ -47,7 +47,6 @@ while running:
     t = time()
     mspt = (t-t0)*1000
     pygame.display.set_caption(f'{mspt:.3f} ms per tick')
-    t0 = t
 
     # Process events
     for event in pygame.event.get():
