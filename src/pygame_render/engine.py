@@ -31,6 +31,13 @@ class RenderEngine:
         Parameters:
         - screen_width (int): The width of the rendering window.
         - screen_height (int): The height of the rendering window.
+        - fullscreen (int or bool, optional): Set to 1 or True to enable fullscreen mode, 0 or False to disable. Default is 0.
+        - resizable (int or bool, optional): Set to 1 or True to enable window resizing, 0 or False to disable. Default is 0.
+        - noframe (int or bool, optional): Set to 1 or True to remove window frame, 0 or False to keep the frame. Default is 0.
+        - scaled (int or bool, optional): Set to 1 or True to enable display scaling, 0 or False to disable. Default is 0.
+        - depth (int, optional): Depth of the rendering window. Default is 0.
+        - display (int, optional): The display index to use. Default is 0.
+        - vsync (int, optional): Set to 1 to enable vertical synchronization, 0 to disable. Default is 0.
 
         Raises:
         - AssertionError: If Pygame is not initialized. Call pygame.init() before using the rendering engine.
