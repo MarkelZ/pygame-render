@@ -331,3 +331,25 @@ class RenderEngine:
         # Free vertex data
         vbo.release()
         vao.release()
+
+    def release_opengl_resources(self):
+        """
+        Manually release OpenGL resources managed by the RenderEngine.
+
+        Note: 
+        - Once this method is called, the engine is no longer usable. 
+        - This method is automatically called by the garbage collector, 
+          so there is no need to do it manually.
+        """
+        self._shader_draw.release()
+        self._screen.framebuffer.release()
+        self._ctx.release()
+
+        self._shader_draw = None
+        self._screen = None
+        self._ctx = None
+
+    def __del__(self):
+        # Check if ctx is None to avoid double-freeing
+        if self._ctx != None:
+            self.release_opengl_resources()
