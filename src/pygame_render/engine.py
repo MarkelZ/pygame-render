@@ -70,6 +70,8 @@ class RenderEngine:
 
         # Create an OpenGL context
         self._ctx = moderngl.create_context()
+
+        # Configure alpha blending
         self._ctx.enable(moderngl.BLEND)
         self._ctx.blend_func = (moderngl.SRC_ALPHA, moderngl.ONE_MINUS_SRC_ALPHA,
                                 moderngl.ONE, moderngl.ONE_MINUS_SRC_ALPHA)
@@ -99,6 +101,18 @@ class RenderEngine:
     def ctx(self) -> Context:
         """Get the ModernGL rendering context."""
         return self._ctx
+
+    def use_alpha_blending(self, enabled: bool) -> None:
+        """
+        Enable or disable alpha blending.
+
+        Args:
+            enabled (bool): True to enable, False to disable premultiplied alpha blending.
+        """
+        if enabled:
+            self._ctx.enable(moderngl.BLEND)
+        else:
+            self._ctx.disable(moderngl.BLEND)
 
     def surface_to_texture(self, sfc: pygame.Surface) -> moderngl.Texture:
         """
