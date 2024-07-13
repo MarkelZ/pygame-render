@@ -1,5 +1,7 @@
 from importlib import resources
+import warnings
 import numbers
+from math import sin, cos
 
 import moderngl
 from moderngl import Texture, Context, NEAREST
@@ -54,6 +56,9 @@ class RenderEngine:
         pygame.display.gl_set_attribute(
             pygame.GL_CONTEXT_PROFILE_MASK, pygame.GL_CONTEXT_PROFILE_CORE)
 
+        # Set multi-sample buffer for MSAA
+        pygame.display.gl_set_attribute(pygame.GL_MULTISAMPLEBUFFERS, 1)
+
         # Configure pygame display
         self._screen_res = (screen_width, screen_height)
         flags = pygame.OPENGL | pygame.DOUBLEBUF
@@ -91,6 +96,22 @@ class RenderEngine:
         prog_draw = self._ctx.program(vertex_shader=vertex_src,
                                       fragment_shader=fragment_src_draw)
         self._shader_draw = Shader(prog_draw)
+
+        # Create a shader program for drawing primitives
+        self.prog_prim = self.ctx.program(
+            vertex_shader='''
+            #version 330
+            in vec2 vert;
+            void main() {
+            gl_Position = vec4(vert.x, vert.y, 0.0, 1.0);
+            }''',
+            fragment_shader='''
+            #version 330
+            uniform vec4 primColor;
+            out vec4 color;
+            void main() {
+            color = primColor;
+            }''',)
 
     @property
     def screen(self) -> Layer:
@@ -346,13 +367,258 @@ class RenderEngine:
         vbo.release()
         vao.release()
 
+    def render_primitive(self,
+                         layer: Layer,
+                         color: tuple,
+                         vertices: list[tuple[float, float]],
+                         antialias: bool = False,
+                         mode: int = moderngl.LINES):
+        """
+        Render a primitive shape (e.g., lines, triangles) on the specified layer.
+
+        :param layer: The rendering layer.
+        :param color: The color of the primitive in (R, G, B) or (R, G, B, A) format.
+        :param vertices: A list of vertex coordinates as (x, y) tuples.
+        :param antialias: Enables antialiasing if True.
+        :param mode: The rendering mode (e.g., LINES, TRIANGLES).
+        """
+        if len(color) == 3:
+            color = (color[0], color[1], color[2], 255)
+
+        # Enable MSAA
+        if antialias:
+            pygame.display.gl_set_attribute(pygame.GL_MULTISAMPLESAMPLES, 4)
+
+        # Convert to destination coordinates
+        dest_width, dest_height = layer.size
+        dest_vertices = np.array(
+            [to_dest_coords(v, dest_width, dest_height) for v in vertices])
+
+        # VBO and VAO
+        vbo = self.ctx.buffer(dest_vertices.astype('f4').tobytes())
+        vao = self.ctx.simple_vertex_array(
+            self.prog_prim, vbo, 'vert')
+
+        # Send color uniform
+        self.prog_prim['primColor'] = color
+
+        # Set layer as target
+        layer.framebuffer.use()
+
+        # Render
+        vao.render(mode)
+
+        # Disable MSAA
+        if antialias:
+            pygame.display.gl_set_attribute(pygame.GL_MULTISAMPLESAMPLES, 1)
+
+        # Free vertex data
+        vbo.release()
+        vao.release()
+
+    def render_triangles(self,
+                         layer: Layer,
+                         color: tuple,
+                         vertices: list[tuple[float, float]],
+                         antialias: bool = False,
+                         strip: bool = False,
+                         fan: bool = False):
+        """
+        Render triangles on the specified layer.
+
+        :param layer: The rendering layer.
+        :param color: The color of the triangles in (R, G, B) or (R, G, B, A) format.
+        :param vertices: A list of vertex coordinates as (x, y) tuples.
+        :param antialias: Enables antialiasing if True.
+        :param strip: If True, uses TRIANGLE_STRIP mode.
+        :param fan: If True, uses TRIANGLE_FAN mode.
+        """
+        # Warn if both strip and fan flags are enabled simultaneously
+        if strip and fan:
+            warnings.warn(
+                'Both strip and fan flags enabled. Overriding with strip flag.')
+
+        # Pick the flag for the render mode
+        if strip:
+            flag = moderngl.TRIANGLE_STRIP
+        elif fan:
+            flag = moderngl.TRIANGLE_FAN
+        else:
+            flag = moderngl.TRIANGLES
+
+        self.render_primitive(layer, color, vertices, antialias, flag)
+
+    def render_lines(self,
+                     layer: Layer,
+                     color: tuple[float, float, float],
+                     vertices: list[tuple[float, float]],
+                     antialias: bool = False,
+                     strip: bool = False):
+        """
+        Render lines on the specified layer.
+
+        :param layer: The rendering layer.
+        :param color: The color of the lines in (R, G, B) or (R, G, B, A) format.
+        :param vertices: A list of vertex coordinates as (x, y) tuples.
+        :param antialias: Enables antialiasing if True.
+        :param strip: If True, uses LINE_STRIP mode.
+        """
+        # Pick the flag for the render mode
+        if strip:
+            flag = moderngl.LINE_STRIP
+        else:
+            flag = moderngl.LINES
+
+        self.render_primitive(layer, color, vertices, antialias, flag)
+
+    def render_circle_arc(self,
+                          layer: Layer,
+                          color: tuple,
+                          center: tuple[float, float],
+                          radius: float,
+                          angle1: float,
+                          angle2: float,
+                          antialias: bool = False,
+                          num_segments: None | int = None):
+        """
+        Render a circular arc on the specified layer.
+
+        :param layer: The rendering layer.
+        :param color: The color of the arc in (R, G, B) or (R, G, B, A) format.
+        :param center: The center of the arc as (x, y) tuple.
+        :param radius: The radius of the arc.
+        :param angle1: The starting angle of the arc in degrees.
+        :param angle2: The ending angle of the arc in degrees.
+        :param antialias: Enables antialiasing if True.
+        :param num_segments: The number of segments to use for the arc. If None, defaults to a smooth arc.
+        """
+        # Ensure the arc always goes the shortest route
+        if angle2 < angle1:
+            angle2 += 360
+
+        # If the number of segments is not provided, fix it to 32 segments per
+        # 360 degrees, to get a smooth looking arc
+        if num_segments == None:
+            num_segments = max(4, int(32 * abs(angle2 - angle1) / 360))
+
+        # Convert angles from degrees to radians
+        angle1 = np.radians(angle1)
+        angle2 = np.radians(angle2)
+
+        # Include the center as the first vertex to render with TRIANGLE_FAN
+        vertices = [center]
+
+        # Generate the vertices
+        for angle in np.linspace(angle1, angle2, num_segments + 1):
+
+            # Calculate the x and y coordinates for each vertex
+            x = center[0] + radius * cos(angle)
+            y = center[1] + radius * sin(angle)
+
+            vertices.append((x, y))
+
+        # Render a triangle fan with the vertices
+        self.render_primitive(layer, color, vertices,
+                              antialias, moderngl.TRIANGLE_FAN)
+
+    def render_circle(self,
+                      layer: Layer,
+                      color: tuple,
+                      center: tuple[float, float],
+                      radius: float,
+                      antialias: bool = False,
+                      num_segments: int = None):
+        """
+        Render a full circle on the specified layer.
+
+        :param layer: The rendering layer.
+        :param color: The color of the circle in (R, G, B) or (R, G, B, A) format.
+        :param center: The center of the circle as (x, y) tuple.
+        :param radius: The radius of the circle.
+        :param antialias: Enables antialiasing if True.
+        :param num_segments: The number of segments to use for the circle. If None, defaults to a smooth circle.
+        """
+        self.render_circle_arc(layer, color, center, radius,
+                               0, 360, antialias, num_segments)
+
+    def render_rectangle(self,
+                         layer: Layer,
+                         color: tuple,
+                         position: tuple[float, float],
+                         width: float,
+                         height: float,
+                         angle: float = 0,
+                         antialias: bool = False):
+        """
+        Render a rectangle on the specified layer.
+
+        :param layer: The rendering layer.
+        :param color: The color of the rectangle in (R, G, B) or (R, G, B, A) format.
+        :param position: The position of the rectangle's center as (x, y) tuple.
+        :param width: The width of the rectangle.
+        :param height: The height of the rectangle.
+        :param angle: The rotation angle of the rectangle in degrees.
+        :param antialias: Enables antialiasing if True.
+        """
+        vertices = create_rotated_rect(
+            position, width, height, [1, 1], angle, [False, False])
+        v1, v2, v3, v4 = vertices
+        self.render_primitive(layer, color, [v2, v3, v1, v4],
+                              antialias, moderngl.TRIANGLE_STRIP)
+
+    def render_thick_line(self,
+                          layer: Layer,
+                          color: tuple,
+                          p1: tuple[float, float],
+                          p2: tuple[float, float],
+                          thickness: float,
+                          capped: bool = False,
+                          antialias: bool = False):
+        """
+        Render a thick line on the specified layer.
+
+        :param layer: The rendering layer.
+        :param color: The color of the line in (R, G, B) or (R, G, B, A) format.
+        :param p1: The starting point of the line as (x, y) tuple.
+        :param p2: The ending point of the line as (x, y) tuple.
+        :param thickness: The thickness of the line.
+        :param capped: If True, adds caps at the ends of the line.
+        :param antialias: Enables antialiasing if True.
+        """
+        # Calculate direction vector and normalize it
+        direction = (p2[0]-p1[0], p2[1]-p1[1])
+        direction_norm = np.linalg.norm(direction)
+        direction = direction / direction_norm
+
+        # Calculate the perpendicular vector
+        h_thickness = thickness / 2
+        perpendicular = np.array([-direction[1], direction[0]]) * h_thickness
+
+        # Calculate the four corners of the rectangle
+        vertices = np.array([p1 + perpendicular,
+                             p1 - perpendicular,
+                             p2 + perpendicular,
+                             p2 - perpendicular])
+
+        # Draw line segment as a rectangle
+        self.render_primitive(layer, color, vertices,
+                              antialias, moderngl.TRIANGLE_STRIP)
+
+        # Draw caps at both ends of the line segment
+        if capped:
+            angle = np.rad2deg(np.arctan2(direction[1], direction[0]))
+            self.render_circle_arc(
+                layer, color, p1, h_thickness, angle + 90, angle + 270, antialias)
+            self.render_circle_arc(layer, color,
+                                   p2, h_thickness, angle - 90, angle + 90)
+
     def release_opengl_resources(self):
         """
         Manually release OpenGL resources managed by the RenderEngine.
 
-        Note: 
-        - Once this method is called, the engine is no longer usable. 
-        - This method is automatically called by the garbage collector, 
+        Note:
+        - Once this method is called, the engine is no longer usable.
+        - This method is automatically called by the garbage collector,
           so there is no need to do it manually.
         """
         self._shader_draw.release()
