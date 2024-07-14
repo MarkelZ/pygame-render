@@ -328,14 +328,27 @@ class RenderEngine:
         # Render the texture
         self.render_from_vertices(
             tex, layer, dest_vertices, section_vertices, shader)
-        return
 
     def render_from_vertices(self,
                              tex: Texture,
                              layer: Layer,
-                             dest_vertices: list[float],
-                             section_vertices: list[float],
+                             dest_vertices: list[(float, float)],
+                             section_vertices: list[(float, float)],
                              shader: Shader = None) -> None:
+        """
+        Render a texture onto a layer given lists of vertices.
+
+        Parameters:
+        - tex (Texture): The texture to render.
+        - layer (Layer): The layer to render onto.
+        - dest_vertices (list[(float, float)]): The destination coordinates on the target layer.
+        - section_vertices (list[(float, float)]): The section of the texture to render.
+        - shader (Shader): The shader program to use for rendering. If None, a default shader is used. Default is None.
+
+        Returns:
+        None
+        """
+
         # Default to draw shader program if none
         if shader == None:
             shader = self._shader_draw
