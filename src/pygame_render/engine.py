@@ -11,7 +11,7 @@ import pygame
 
 from pygame_render.layer import Layer
 from pygame_render.shader import Shader
-from pygame_render.util import normalize_color_arguments, create_rotated_rect, to_dest_coords
+from pygame_render.util import normalize_color_arguments, create_rotated_rect, to_dest_coords, to_source_coords
 
 
 class RenderEngine:
@@ -306,10 +306,6 @@ class RenderEngine:
         if section == None:
             section = pygame.Rect(0, 0, tex.width, tex.height)
 
-        # Default to draw shader program if none
-        if shader == None:
-            shader = self._shader_draw
-
         # If the scale is not a tuple but a scalar, convert it into a tuple
         if isinstance(scale, numbers.Number):
             scale = (scale, scale)
@@ -320,30 +316,50 @@ class RenderEngine:
 
         # Get the vertex coordinates of a rectangle that has been rotated,
         # scaled, and translated, in world coordinates
-        points = create_rotated_rect(position, section.width,
-                                     section.height, scale, angle, flip)
+        dest_vertices = create_rotated_rect(position, section.width,
+                                            section.height, scale, angle, flip)
+
+        # Convert the section rectangle into a list of vertices
+        section_vertices = [(section.x, section.y),
+                            (section.x + section.width, section.y),
+                            (section.x, section.y + section.height),
+                            (section.x + section.width, section.y + section.height)]
+
+        # Render the texture
+        self.render_from_vertices(
+            tex, layer, dest_vertices, section_vertices, shader)
+        return
+
+    def render_from_vertices(self,
+                             tex: Texture,
+                             layer: Layer,
+                             dest_vertices: list[float],
+                             section_vertices: list[float],
+                             shader: Shader = None) -> None:
+        # Default to draw shader program if none
+        if shader == None:
+            shader = self._shader_draw
 
         # Convert to destination coordinates
-        dest_width, dest_height = layer.size
-        points = [to_dest_coords(p, dest_width, dest_height) for p in points]
+        vertex_coords = [to_dest_coords(
+            p, layer.width, layer.height) for p in dest_vertices]
 
         # Mesh for destination rect on screen
-        p1, p2, p3, p4 = points
-        vertex_coords = np.array([p3, p4, p2,
-                                  p2, p4, p1], dtype=np.float32)
+        p1, p2, p3, p4 = vertex_coords
+        vertex_data = np.array([p3, p4, p2,
+                                p2, p4, p1], dtype=np.float32)
 
         # Calculate the texture coordinates
-        x = section.x / tex.width
-        y = section.y / tex.height
-        w = section.width / tex.width
-        h = section.height / tex.height
+        section_coords = [to_source_coords(
+            p, tex.width, tex.height) for p in section_vertices]
 
         # Mesh for the section within the texture
-        tex_coords = np.array([(x, y + h), (x + w, y + h), (x, y),
-                               (x, y), (x + w, y + h), (x + w, y)], dtype=np.float32)
+        p1, p2, p3, p4 = section_coords
+        section_data = np.array([p3, p4, p1,
+                                 p1, p4, p2], dtype=np.float32)
 
         # Create VBO and VAO
-        buffer_data = np.hstack([vertex_coords, tex_coords])
+        buffer_data = np.hstack([vertex_data, section_data])
 
         vbo = self._ctx.buffer(buffer_data)
         vao = self._ctx.vertex_array(shader.program, [

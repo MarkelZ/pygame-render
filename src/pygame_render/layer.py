@@ -36,6 +36,16 @@ class Layer:
         """Get the size (width, height) of the layer."""
         return self._fbo.size
 
+    @property
+    def width(self) -> tuple[int, int]:
+        """Get the width of the layer."""
+        return self._fbo.width
+
+    @property
+    def height(self) -> tuple[int, int]:
+        """Get the height of the layer."""
+        return self._fbo.height
+
     def clear(self, R: (int | tuple[int]) = 0, G: int = 0, B: int = 0, A: int = 255):
         """
         Clear the layer with a color.

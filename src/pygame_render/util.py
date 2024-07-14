@@ -63,3 +63,7 @@ def create_rotated_rect(position, width, height, scale, angle, flip):
 
 def to_dest_coords(p: tuple[float, float], dest_width: float, dest_height: float):
     return (2. * p[0] / dest_width - 1., 1. - 2. * p[1] / dest_height)
+
+
+def to_source_coords(p: tuple[float, float], source_width: float, source_height: float):
+    return (p[0] / source_width, p[1] / source_height)
