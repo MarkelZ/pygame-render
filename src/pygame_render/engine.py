@@ -57,7 +57,7 @@ class RenderEngine:
             pygame.GL_CONTEXT_PROFILE_MASK, pygame.GL_CONTEXT_PROFILE_CORE)
 
         # Set multi-sample buffer for MSAA
-        pygame.display.gl_set_attribute(pygame.GL_MULTISAMPLEBUFFERS, 1)
+        # pygame.display.gl_set_attribute(pygame.GL_MULTISAMPLEBUFFERS, 1)
 
         # Configure pygame display
         self._screen_res = (screen_width, screen_height)
