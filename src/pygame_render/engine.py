@@ -97,6 +97,17 @@ class RenderEngine:
                                       fragment_shader=fragment_src_draw)
         self._shader_draw = Shader(prog_draw)
 
+        # read the tone mapping shader
+        vertex_src = resources.read_text(
+            'pygame_render', 'vertex_tone.glsl')
+        fragment_src_draw = resources.read_text(
+            'pygame_render', 'fragment_tone.glsl')
+
+        # Create draw shader program
+        prog_draw = self._ctx.program(vertex_shader=vertex_src,
+                                      fragment_shader=fragment_src_draw)        
+        self._shader_tonemap = Shader(prog_draw)
+
         # Create a shader program for drawing primitives
         self.prog_prim = self.ctx.program(
             vertex_shader='''
@@ -184,7 +195,7 @@ class RenderEngine:
         - data (bytes | None): Optional initial data for the texture. If None, the texture data is uninitialized.
         - samples (int): The number of samples. Value 0 means no multisample format.
         - alignment (int): The byte alignment 1, 2, 4 or 8.
-        - dtype (str): Data type.
+        - dtype (str): Data type ('f4' for HDR textures).
         - internal_format (int): Override the internal format of the texture (IF needed).
 
         Returns:
@@ -277,7 +288,8 @@ class RenderEngine:
                angle: float = 0.0,
                flip: tuple[bool, bool] | bool = (False, False),
                section: pygame.Rect | None = None,
-               shader: Shader = None) -> None:
+               shader: Shader = None,
+               hdr_render: bool = False) -> None:
         """
         Render a texture onto a layer with optional transformations.
 
@@ -290,6 +302,7 @@ class RenderEngine:
         - flip (tuple[bool, bool] | bool): Whether to flip the texture. Can be a tuple (flip x axis, flip y axis) or a boolean (flip x axis). Default is (False, False).
         - section (pygame.Rect | None): The section of the texture to render. If None, the entire texture is rendered. Default is None.
         - shader (Shader): The shader program to use for rendering. If None, a default shader is used. Default is None.
+        - hdr_render (bool): Whether to render using HDR texture with tone mapping. Default is False (SDR).
 
         Returns:
         None
@@ -300,6 +313,7 @@ class RenderEngine:
         - If section is None, the entire texture is used.
         - If section is larger than the texture, the texture is repeated to fill the section.
         - If shader is None, a default shader (_prog_draw) is used.
+        - If hdr_render is True, it uses an HDR texture with tone mapping applied.        
         """
 
         # Create section rect if none
@@ -313,6 +327,9 @@ class RenderEngine:
         # If flip is not a tuple but a boolean, convert it into a tuple
         if isinstance(flip, bool):
             flip = (flip, False)
+
+        if hdr_render:
+            shader = self._shader_tonemap            
 
         # Get the vertex coordinates of a rectangle that has been rotated,
         # scaled, and translated, in world coordinates
