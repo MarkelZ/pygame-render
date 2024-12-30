@@ -10,6 +10,7 @@ screen = engine.make_layer(display_size)
 
 hdr_texture = engine.make_layer(display_size, dtype = 'f4')
 hdr_layer = engine.make_layer(display_size, dtype = 'f4')
+engine.HDR_exposure = 0.1
 
 pygame.font.init()
 font = pygame.font.SysFont("Arial", 30)

@@ -107,6 +107,8 @@ class RenderEngine:
         prog_draw = self._ctx.program(vertex_shader=vertex_src,
                                       fragment_shader=fragment_src_draw)        
         self._shader_tonemap = Shader(prog_draw)
+        self._exposure: float
+        self.HDR_exposure = 0.1
 
         # Create a shader program for drawing primitives
         self.prog_prim = self.ctx.program(
@@ -133,6 +135,15 @@ class RenderEngine:
     def ctx(self) -> Context:
         """Get the ModernGL rendering context."""
         return self._ctx
+
+    @property
+    def HDR_exposure(self) -> float:
+        return self._exposure
+
+    @HDR_exposure.setter
+    def HDR_exposure(self, value: float) -> None:
+        self._exposure = value
+        self._shader_tonemap['exposure'] = value
 
     def use_alpha_blending(self, enabled: bool) -> None:
         """
