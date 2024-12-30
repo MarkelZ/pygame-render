@@ -1,6 +1,3 @@
-import sys
-sys.path.insert(0, '/Users/olakenjiforslund/OKF/Leisure/Programming/Python/projects/pygame-render/src/') 
-
 import pygame
 from pygame_render import RenderEngine
 import math
