@@ -137,6 +137,10 @@ class RenderEngine:
         return self._ctx
 
     @property
+    def display_size(self) -> tuple[int, int]:
+        return pygame.display.get_window_size()
+
+    @property
     def HDR_exposure(self) -> float:
         return self._exposure
 
