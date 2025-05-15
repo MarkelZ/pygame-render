@@ -40,4 +40,4 @@ __all__ = ['RenderEngine', 'FontAtlas', 'Layer', 'Shader', 'Program', 'Buffer',
            'Framebuffer', 'Texture', 'NEAREST', 'LINEAR']
 
 # Version of the pygame_render package
-__version__ = '1.3.0'
+__version__ = '1.4.0'
