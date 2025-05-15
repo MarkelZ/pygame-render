@@ -1,4 +1,8 @@
 # Pygame Render
+[![PyPI version](https://img.shields.io/pypi/v/pygame-render.svg)](https://pypi.org/project/pygame-render/)
+![License](https://img.shields.io/github/license/markelz/pygame-render)
+[![PyPI Downloads](https://static.pepy.tech/badge/pygame-render)](https://pepy.tech/projects/pygame-render)
+![GitHub stars](https://img.shields.io/github/stars/markelz/pygame-render?style=social)
 
 Python package for rendering 2D graphics with shaders in Pygame.
 
