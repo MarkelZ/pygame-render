@@ -9,7 +9,7 @@ engine = RenderEngine(display_size[0], display_size[1])
 screen = engine.make_layer(display_size)
 text_layer = engine.make_layer((300, 300))
 
-font = engine.make_fontatlas(font_size=64)
+font = engine.make_font_atlas(font_size=64)
 
 # Clock
 clock = pygame.time.Clock()

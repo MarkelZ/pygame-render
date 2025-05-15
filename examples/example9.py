@@ -28,7 +28,7 @@ while running:
             running = False
 
     time += 0.005
-    value = 5 * math.sin(time) + 5#0 - 10
+    value = 5 * math.sin(time) + 5
 
     screen.clear(0, 0, 0, 255)
     hdr_texture.clear(255 * value, 255, 255, 255)
