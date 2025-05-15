@@ -15,9 +15,14 @@ engine.HDR_exposure = 0.1
 pygame.font.init()
 font = pygame.font.SysFont("Arial", 30)
 
+# Clock
+clock = pygame.time.Clock()
+
 running = True
 time = 0
 while running:
+    clock.tick(60)
+
     for event in pygame.event.get():
         if event.type == pygame.QUIT:
             running = False
