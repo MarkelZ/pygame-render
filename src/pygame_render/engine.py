@@ -360,7 +360,7 @@ class RenderEngine:
         - flip (tuple[bool, bool] | bool): Whether to flip the texture. Can be a tuple (flip x axis, flip y axis) or a boolean (flip x axis). Default is (False, False).
         - section (pygame.Rect | None): The section of the texture to render. If None, the entire texture is rendered. Default is None.
         - shader (Shader): The shader program to use for rendering. If None, a default shader is used. Default is None.
-        - hdr_render (bool): Whether to render using HDR texture with tone mapping. Default is False (SDR).
+        - hdr_render (bool): Whether to apply HDR tonemapping.
 
         Returns:
         None
@@ -374,37 +374,21 @@ class RenderEngine:
         - If hdr_render is True, it uses an HDR texture with tone mapping applied.
         """
 
-        # Create section rect if none
-        if section == None:
-            section = pygame.Rect(0, 0, tex.width, tex.height)
-
-        # If the scale is not a tuple but a scalar, convert it into a tuple
-        if isinstance(scale, numbers.Number):
-            scale = (scale, scale)
-
-        # If flip is not a tuple but a boolean, convert it into a tuple
-        if isinstance(flip, bool):
-            flip = (flip, False)
-
-        if hdr_render:
-            shader = self._shader_tonemap
-
-        # Get the vertex coordinates of a rectangle that has been rotated,
-        # scaled, and translated, in world coordinates
-        dest_vertices = create_rotated_rect(
-            position, section.width, section.height, scale, angle, flip
+        self.render_batch(
+            tex,
+            layer,
+            transforms=[
+                {
+                    "position": position,
+                    "scale": scale,
+                    "angle": angle,
+                    "flip": flip,
+                    "section": section,
+                }
+            ],
+            shader=shader,
+            hdr_render=hdr_render,
         )
-
-        # Convert the section rectangle into a list of vertices
-        section_vertices = [
-            (section.x, section.y),
-            (section.x + section.width, section.y),
-            (section.x, section.y + section.height),
-            (section.x + section.width, section.y + section.height),
-        ]
-
-        # Render the texture
-        self.render_from_vertices(tex, layer, dest_vertices, section_vertices, shader)
 
     def render_from_vertices(
         self,
@@ -413,6 +397,7 @@ class RenderEngine:
         dest_vertices: list[(float, float)],
         section_vertices: list[(float, float)],
         shader: Shader = None,
+        hdr_render: bool = False,
     ) -> None:
         """
         Render a texture onto a layer given lists of vertices.
@@ -423,60 +408,242 @@ class RenderEngine:
         - dest_vertices (list[(float, float)]): The destination coordinates on the target layer.
         - section_vertices (list[(float, float)]): The section of the texture to render.
         - shader (Shader): The shader program to use for rendering. If None, a default shader is used. Default is None.
+        - hdr_render (bool): Whether to apply HDR tonemapping.
 
         Returns:
         None
         """
 
-        # Default to draw shader program if none
-        if shader == None:
+        self.render_batch_from_vertices(
+            tex,
+            layer,
+            dest_vertices_list=[dest_vertices],
+            section_vertices_list=[section_vertices],
+            shader=shader,
+            hdr_render=hdr_render,
+        )
+
+    def render_batch(
+        self,
+        tex: Texture,
+        layer: Layer,
+        transforms: list[dict],
+        shader: Shader = None,
+        hdr_render: bool = False,
+    ) -> None:
+        """
+        Efficiently render multiple instances of a texture using batched vertex data.
+
+        Parameters:
+        - tex (Texture): The texture to render.
+        - layer (Layer): The layer to render onto.
+        - transforms (list[dict]): Each dict should contain:
+            - position
+            - scale
+            - angle
+            - flip
+            - section
+        - shader (Shader): Optional shader. If None, uses internal.
+        - hdr_render (bool): Whether to apply HDR tonemapping.
+
+        Returns:
+        None
+        """
+
+        dest_vertices_list = []
+        section_vertices_list = []
+
+        for tf in transforms:
+            position = tf.get("position", (0, 0))
+            scale = tf.get("scale", (1.0, 1.0))
+            angle = tf.get("angle", 0.0)
+            flip = tf.get("flip", (False, False))
+            section = tf.get("section")
+
+            if isinstance(scale, numbers.Number):
+                scale = (scale, scale)
+            if isinstance(flip, bool):
+                flip = (flip, False)
+            if section is None:
+                section = pygame.Rect(0, 0, tex.width, tex.height)
+
+            dest_vertices = create_rotated_rect(
+                position, section.width, section.height, scale, angle, flip
+            )
+            section_vertices = [
+                (section.x, section.y),
+                (section.x + section.width, section.y),
+                (section.x, section.y + section.height),
+                (section.x + section.width, section.y + section.height),
+            ]
+
+            dest_vertices_list.append(dest_vertices)
+            section_vertices_list.append(section_vertices)
+
+        self.render_batch_from_vertices(
+            tex, layer, dest_vertices_list, section_vertices_list, shader, hdr_render
+        )
+
+    def render_batch_from_vertices(
+        self,
+        tex: Texture,
+        layer: Layer,
+        dest_vertices_list: list[list[tuple[float, float]]],
+        section_vertices_list: list[list[tuple[float, float]]],
+        shader: Shader = None,
+        hdr_render: bool = False,
+    ) -> None:
+        """
+        Render multiple quads from raw vertex and texture coordinates.
+
+        Parameters:
+        - tex (Texture): The texture to render.
+        - layer (Layer): The target framebuffer.
+        - dest_vertices_list (list[tuple[float, float]]): List of destination vertices for all quads (6 per quad).
+        - section_vertices_list (list[tuple[float, float]]): List of texture coordinates for all quads (6 per quad).
+        - shader (Shader): Shader to use. Defaults to _shader_draw.
+        - hdr_render (bool): Whether to apply HDR tonemapping.
+
+        Returns:
+        None
+        """
+
+        if hdr_render:
+            shader = self._shader_tonemap
+        elif shader is None:
             shader = self._shader_draw
 
-        # Convert to destination coordinates
-        vertex_coords = [
-            to_dest_coords(p, layer.width, layer.height) for p in dest_vertices
-        ]
+        all_dest_coords = []
+        all_section_coords = []
 
-        # Mesh for destination rect on screen
-        p1, p2, p3, p4 = vertex_coords
-        vertex_data = np.array([p3, p4, p2, p2, p4, p1], dtype=np.float32)
+        for dest_vertices, section_vertices in zip(
+            dest_vertices_list, section_vertices_list
+        ):
+            # Convert screen coordinates to texture space
+            vertex_coords = [
+                to_dest_coords(p, layer.width, layer.height) for p in dest_vertices
+            ]
+            section_coords = [
+                to_source_coords(p, tex.width, tex.height) for p in section_vertices
+            ]
 
-        # Calculate the texture coordinates
-        section_coords = [
-            to_source_coords(p, tex.width, tex.height) for p in section_vertices
-        ]
+            # Triangle order: p3, p4, p2, p2, p4, p1
+            p1, p2, p3, p4 = vertex_coords
+            all_dest_coords.extend([p3, p4, p2, p2, p4, p1])
 
-        # Mesh for the section within the texture
-        p1, p2, p3, p4 = section_coords
-        section_data = np.array([p3, p4, p1, p1, p4, p2], dtype=np.float32)
+            p1, p2, p3, p4 = section_coords
+            all_section_coords.extend([p3, p4, p1, p1, p4, p2])
 
-        # Create VBO and VAO
+        # Interleave and upload
+        vertex_data = np.array(all_dest_coords, dtype=np.float32)
+        section_data = np.array(all_section_coords, dtype=np.float32)
         buffer_data = np.hstack([vertex_data, section_data])
 
         vbo = self._ctx.buffer(buffer_data)
         vao = self._ctx.vertex_array(
             shader.program,
-            [
-                (vbo, "2f 2f", "vertexPos", "vertexTexCoord"),
-            ],
+            [(vbo, "2f 2f", "vertexPos", "vertexTexCoord")],
         )
 
-        # Use textures
         tex.use()
         shader.bind_sampler2D_uniforms()
-
-        # Set layer as target
         layer.framebuffer.use()
 
-        # Render
-        vao.render()
+        vao.render(moderngl.TRIANGLES)
 
-        # Clear the sampler2D locations
         shader.clear_sampler2D_uniforms()
-
-        # Free vertex data
         vbo.release()
         vao.release()
+
+    def render_batch_a_bit_faster(
+        self,
+        tex: Texture,
+        layer: Layer,
+        transforms: list[dict],
+        shader: Shader = None,
+        hdr_render: bool = False,
+    ) -> None:
+        """
+        Efficiently render multiple instances of a texture with various transforms in a single GPU call.
+
+        Parameters:
+        - tex (Texture): The texture to render.
+        - layer (Layer): The layer to render onto.
+        - transforms (list[dict]): Each dict should have:
+            - position (tuple[float, float])
+            - scale (tuple[float, float] | float)
+            - angle (float)
+            - flip (tuple[bool, bool] | bool)
+            - section (pygame.Rect | None)
+        - shader (Shader): The shader to use. Defaults to internal shader.
+        - hdr_render (bool): Whether to render using HDR tone mapping.
+
+        Returns:
+        None
+        """
+
+        if shader is None:
+            shader = self._shader_tonemap if hdr_render else self._shader_draw
+
+        all_vertex_data = []
+        all_section_data = []
+
+        for tf in transforms:
+            position = tf.get("position", (0, 0))
+            scale = tf.get("scale", (1.0, 1.0))
+            angle = tf.get("angle", 0.0)
+            flip = tf.get("flip", (False, False))
+            section = tf.get("section")
+
+            if isinstance(scale, numbers.Number):
+                scale = (scale, scale)
+            if isinstance(flip, bool):
+                flip = (flip, False)
+            if section is None:
+                section = pygame.Rect(0, 0, tex.width, tex.height)
+
+            dest_vertices = create_rotated_rect(
+                position, section.width, section.height, scale, angle, flip
+            )
+            section_vertices = [
+                (section.x, section.y),
+                (section.x + section.width, section.y),
+                (section.x, section.y + section.height),
+                (section.x + section.width, section.y + section.height),
+            ]
+
+            # Convert to screen and texture coordinates
+            vertex_coords = [to_dest_coords(p, layer.width, layer.height) for p in dest_vertices]
+            section_coords = [to_source_coords(p, tex.width, tex.height) for p in section_vertices]
+
+            # Order as triangles: [p3, p4, p2], [p2, p4, p1]
+            p1, p2, p3, p4 = vertex_coords
+            all_vertex_data.extend([p3, p4, p2, p2, p4, p1])
+
+            p1, p2, p3, p4 = section_coords
+            all_section_data.extend([p3, p4, p1, p1, p4, p2])
+
+        # Combine and upload
+        vertex_data = np.array(all_vertex_data, dtype=np.float32)
+        section_data = np.array(all_section_data, dtype=np.float32)
+
+        buffer_data = np.hstack([vertex_data, section_data])
+
+        vbo = self._ctx.buffer(buffer_data)
+        vao = self._ctx.vertex_array(
+            shader.program,
+            [(vbo, "2f 2f", "vertexPos", "vertexTexCoord")],
+        )
+
+        tex.use()
+        shader.bind_sampler2D_uniforms()
+        layer.framebuffer.use()
+        vao.render(moderngl.TRIANGLES)
+        shader.clear_sampler2D_uniforms()
+
+        vbo.release()
+        vao.release()
+
 
     def render_primitive(
         self,

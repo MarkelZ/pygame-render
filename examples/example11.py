@@ -1,4 +1,3 @@
-from random import randint
 from time import time
 import pygame
 from pygame_render import RenderEngine
@@ -14,15 +13,21 @@ engine = RenderEngine(width, height)
 # Load texture
 tex = engine.load_texture("sprite.png")
 
+# Perinstance transforms
+hmargin, vmargin = 30, 30
+transforms = [
+    {
+        "position": ((hmargin * i) % width, vmargin * (hmargin * i // width)),
+        "scale": 1.5,
+        "angle": 10 * i,
+        "flip": False,
+        "section": None,
+    }
+    for i in range(1000)
+]
+
 # Clock
 clock = pygame.time.Clock()
-
-# Positions
-num_sprites = 1000
-positions = [(randint(0, width), randint(0, height)) for _ in range(num_sprites)]
-
-# Load shader
-shader_glow = engine.load_shader_from_path("vertex.glsl", "fragment_glow.glsl")
 
 # Main game loop
 running = True
@@ -33,22 +38,13 @@ while running:
     t0 = time()
 
     # Clear the screen
-    engine.clear(64, 128, 64)
+    engine.clear(255, 0, 255)
 
-    # Update the time
+    # Update the time and angle
     total_time += clock.get_time()
 
-    # Send time uniform to glow shader
-    shader_glow["time"] = total_time
-
     # Render texture to screen
-    angle = total_time * 0.05
-    engine.render_batch(
-        tex,
-        engine.screen,
-        transforms=[{"position": p, "scale": 16.0, "angle": angle} for p in positions],
-        shader=shader_glow,
-    )
+    engine.render_batch(tex, engine.screen, transforms)
 
     # Update the display
     pygame.display.flip()
@@ -56,9 +52,8 @@ while running:
     # Display mspt
     t = time()
     mspt = (t - t0) * 1000
-    pygame.display.set_caption(
-        f"Rendering {num_sprites} sprites at {mspt:.3f} ms per tick!"
-    )
+    pygame.display.set_caption(f"{mspt:.3f} ms per tick")
+    print(mspt)
 
     # Process events
     for event in pygame.event.get():
