@@ -773,6 +773,8 @@ class RenderEngine:
         color: tuple = (1.0, 1.0, 1.0, 1.0),
         scale: float = 1.0,
         alignment: str = None,
+        position: tuple = (0.0, 0.0), 
+        width: float = None,
     ):
         """
         Render the text on the specified layer with an optional color.
@@ -785,17 +787,19 @@ class RenderEngine:
         - color: The color of the text as an RGBA tuple. Default is white (1.0, 1.0, 1.0, 1.0).
         - scale: Multiplier for glyph size (1.0 = original size).
         - alignment: The alignment of the text, accepts None, 'left', 'center' and 'right'.
+        - position: (x, y) offset in pixel coordinates, relative to the layer. Default is top-left.
+        - width: the width at which to cause a line break. Default is the width of layer
         """
         if len(color) == 3:
             color = (color[0], color[1], color[2], 1.0)
 
         if alignment == None:
             vertices = font_atlas.get_char_batch(
-                layer.width, layer.height, text, letter_frame, scale
+                layer.width, layer.height, text, letter_frame, scale, position, width
             )
         else:
             vertices = font_atlas.get_char_batch_aligned(
-                layer.width, layer.height, text, letter_frame, scale, alignment
+                layer.width, layer.height, text, letter_frame, scale, alignment, position, width
             )
 
         font_atlas.font_texture.use(location=0)  # Bind the font texture at location 0

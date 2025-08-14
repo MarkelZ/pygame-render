@@ -68,6 +68,8 @@ class FontAtlas:
         text: str,
         letter_frame: int,
         scale: float,
+        position: tuple,
+        width: float,
     ) -> np.ndarray:
         """
         Get the batch of characters of a string of text.
@@ -78,14 +80,29 @@ class FontAtlas:
         - text: The text to render.
         - letter_frame: The number of letters to render (useful for animations).
         - scale: Multiplier for glyph size (1.0 = original size).
+        - position: (x, y) offset in pixel coordinates, rellative to the layer. Default is top-left.
+        - width: the width at which to cause a line break. Default is the width of layer        
         """
         text = text[: letter_frame + 1]
+        offset_x = (position[0] / layer_width) * 2 
+        offset_y = -(position[1] / layer_height) * 2
 
-        x, y = -1.0, 1.0  # Start at the top-left corner
+        x, y = -1.0 + offset_x, 1.0 + offset_y  # Start at the top-left corner
+        start_x = x
         line_width = 0  # Track width of the current line
         line_height = 0  # Track the maximum height of the current line
 
         vertices = []
+
+        if width is not None:
+            max_width = (width / layer_width) * 2
+        else:
+            # The remaining width in normalized coords after offset_x (which is in -1 to 1 range)
+            # offset_x ranges from -1 to 1; we start drawing at -1 + offset_x
+            # The right edge is at +1, so available width is (1 - (-1 + offset_x)) = 2 - offset_x
+            # But offset_x may be positive or negative, so calculate accordingly:
+            start_x = -1.0 + offset_x
+            max_width = 1.0 - start_x  # distance from current start_x to right edge (+1)
 
         for char in text:
             if char in self.char_uvs and char in self.char_sizes:
@@ -99,13 +116,13 @@ class FontAtlas:
                 h = (char_h / layer_height) * 2 * scale
 
                 # Check if adding this character would exceed the width of the layer
-                if line_width + w > 2.0:  # If line exceeds the width
+                if line_width + w > max_width:  # If line exceeds the width
                     # Move to the next line
-                    x = -1.0  # Reset x to the start of the line
+                    x = start_x  # Reset x to the start of the line
                     y -= line_height  # Move y down by the height of the current line
                     line_width = 0  # Reset line width
                     line_height = 0  # Reset line height
-                    w = 0  # Skip space if new row
+                    #w = 0  # Skip space if new row
 
                 # Define quad vertices (adjusted for OpenGL top-left origin)
                 vertices.extend([
@@ -136,6 +153,8 @@ class FontAtlas:
         letter_frame: int,
         scale: float,
         alignment: str = "left",
+        position: tuple = (0.0, 0.0),
+        width: float = None,
     ) -> np.ndarray:
         """
         Get the aligned batch of characters of a string of text.
@@ -147,10 +166,20 @@ class FontAtlas:
         - letter_frame: The number of letters to render (useful for animations).
         - scale: Multiplier for glyph size (1.0 = original size).
         - alignment: The alignment of the text, accepts 'left', 'center' and 'right'
+        - position: (x, y) offset in pixel coordinates, rellative to the layer. Default is top-left.
+        - width: the width at which to cause a line break. Default is the width of layer        
         """
         text = text[: letter_frame + 1]
 
-        max_width = 2.0  # Normalized OpenGL width (-1 to 1)
+        offset_x = (position[0] / layer_width) * 2 - 1.0   # pixel to NDC X
+        offset_y = 1.0 - (position[1] / layer_height) * 2  # pixel to NDC Y, flipped vertically
+
+        if width is not None:
+            max_width = (width / layer_width) * 2
+        else:
+            start_x = offset_x
+            max_width = 1.0 - start_x  # available width to the right edge
+
         lines = []
         current_line = []
         line_width = 0.0
@@ -179,18 +208,26 @@ class FontAtlas:
             lines.append((current_line, line_width, max_line_height))
 
         # --- Step 2: Render lines with alignment
-        vertices = []
+        vertices = []        
 
-        y = 1.0  # Start from top of screen
+        if alignment == "center":
+            base_x = lambda lw: -lw / 2 + offset_x
+        elif alignment == "right":
+            base_x = lambda lw: 1.0 - lw + offset_x
+        else:  # left
+            base_x = lambda lw: -1.0 + offset_x
+
+        y = offset_y # Start from top of screen
 
         for line_chars, line_width, line_height in lines:
+            x = base_x(line_width)
             # Determine starting x based on alignment
             if alignment == "center":
-                x = -line_width / 2
+                x =1 -line_width / 2 + offset_x
             elif alignment == "right":
-                x = 1.0 - line_width
+                x = 2.0 - line_width + offset_x
             else:  # left
-                x = -1.0
+                x =  offset_x
 
             for char, w, h in line_chars:
                 uv = self.char_uvs[char]
