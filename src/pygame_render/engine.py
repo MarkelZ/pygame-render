@@ -182,15 +182,32 @@ class RenderEngine:
 
     def use_alpha_blending(self, enabled: bool) -> None:
         """
-        Enable or disable alpha blending.
+        Enable or disable OpenGL alpha blending.
 
         Args:
-            enabled (bool): True to enable, False to disable premultiplied alpha blending.
+            enabled (bool): True to enable alpha blending, False to disable it.
         """
         if enabled:
             self._ctx.enable(moderngl.BLEND)
         else:
             self._ctx.disable(moderngl.BLEND)
+
+    def use_premultiplied_alpha_mode(self) -> None:
+        """
+        Configure the blend function for premultiplied alpha.
+
+        Formula: out = src * 1 + dst * (1 - src_alpha)
+        """
+        self._ctx.blend_func = (moderngl.ONE, moderngl.ONE_MINUS_SRC_ALPHA)
+
+    def use_standard_alpha_mode(self) -> None:
+        """
+        Configure the blend function for standard (non-premultiplied) alpha.
+
+        Formula: out = src * src_alpha + dst * (1 - src_alpha)
+        """
+        self._ctx.blend_func = (moderngl.SRC_ALPHA, moderngl.ONE_MINUS_SRC_ALPHA,
+                                moderngl.ONE, moderngl.ONE_MINUS_SRC_ALPHA)
 
     def surface_to_texture(self, sfc: pygame.Surface) -> moderngl.Texture:
         """
