@@ -33,6 +33,7 @@ while running:
         letter_frame=int(time),
         color=(0, 1, 0, 1),
         scale=1,
+        position=(10, 10)
     )
     engine.render(text_layer.texture, screen)
     engine.render(screen.texture, engine.screen)

@@ -515,6 +515,8 @@ class RenderEngine:
         if len(color) == 3:
             color = (color[0], color[1], color[2], 255)
 
+        color = [c / 255.0 for c in color] # Convert from [0, 255] to [0.0, 1.0]
+
         # Enable MSAA
         if antialias:
             pygame.display.gl_set_attribute(pygame.GL_MULTISAMPLESAMPLES, 4)
@@ -770,7 +772,7 @@ class RenderEngine:
         layer: Layer,
         text: str,
         letter_frame: int,
-        color: tuple = (1.0, 1.0, 1.0, 1.0),
+        color: tuple,
         scale: float = 1.0,
         alignment: str = 'left',
         position: tuple = (0.0, 0.0), 
@@ -791,7 +793,9 @@ class RenderEngine:
         - width: the width at which to cause a line break. Default is the width of layer
         """
         if len(color) == 3:
-            color = (color[0], color[1], color[2], 1.0)
+            color = (color[0], color[1], color[2], 255)
+
+        color = [c / 255.0 for c in color] # Convert from [0, 255] to [0.0, 1.0]
 
         vertices = font_atlas.build_vertices(layer.width, layer.height, text, letter_frame=letter_frame, scale=scale, position=position, width=width, alignment=alignment)
         font_atlas.font_texture.use(location=0)  # Bind the font texture at location 0
