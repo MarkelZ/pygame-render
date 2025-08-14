@@ -1,251 +1,294 @@
 import pygame
 import numpy as np
+from dataclasses import dataclass
+from typing import Dict, List, Tuple, Iterable, Optional
+
+
+@dataclass(frozen=True)
+class Glyph:
+    """Geometry data for a single glyph inside the atlas."""
+    size_px: Tuple[int, int]        # (w, h) in pixels of the rendered glyph surface
+    uv: Tuple[float, float, float, float]  # (u1, v1, u2, v2) in [0,1]
 
 
 class FontAtlas:
+    """
+    Builds a texture atlas for a font and generates a textured-quad vertex buffer
+    for strings with wrapping and alignment.
+
+    Coordinates:
+        - NDC: x in [-1,1] left to right, y in [-1,1] bottom to top (OpenGL-style).
+        - Position is given in pixel coordinates, relative to the top-left of the layer.
+    """
+
+    # Characters included in the atlas by default (printable ASCII).
+    CHAR_START = 32   # space
+    CHAR_END   = 126  # '~'
+    ATLAS_COLS = 16
+    PADDING_PX = 4        # padding around each glyph to reduce bleeding
+    UV_SHRINK  = 0.5      # sub-pixel shrink (in pixel units) for UVs to reduce bleeding
+
     def __init__(self, engine, font_path: str, font_size: int):
-        # Initialize pygame.font
         if not pygame.font.get_init():
             pygame.font.init()
 
-        self.font_size = font_size
-        self.font = pygame.font.Font(font_path, self.font_size)  # Preload font
+        self.font_size = int(font_size)
+        self.font = pygame.font.Font(font_path, self.font_size)
 
-        self.char_uvs = {}  # Dictionary to store character textures
-        self.char_sizes = {}
+        # Metrics useful for packing & layout
+        self.ascent = self.font.get_ascent()
+        self.descent = self.font.get_descent()
+        self.linesize = self.font.get_linesize()
+        self.space_advance_px = self.font.size(" ")[0]
 
-        padding = 4  # Padding to avoid "bleeding"
+        # Precompute glyphs & build atlas texture
+        self.glyphs: Dict[str, Glyph] = {}
+        atlas_surface = self._build_atlas_surface()
+        self.font_texture = engine.surface_to_texture(atlas_surface)  # keeps API the same
 
-        # Font metrics
-        ascent = self.font.get_ascent()
-        descent = self.font.get_descent()
-        max_height = ascent + abs(descent)
-        max_width = self.font.size("M")[0]  # Widest likely char
+    def build_vertices(
+        self,
+        layer_width: int,
+        layer_height: int,
+        text: str,
+        scale: float = 1.0,
+        position: Tuple[float, float] = (0.0, 0.0),
+        width: Optional[float] = None,
+        alignment: str = "left",
+        letter_frame: Optional[int] = None,
+    ) -> np.ndarray:
+        """
+        Create a vertex buffer (x, y, u, v) for the given text as a numpy float32 array.
 
-        cell_w = max_width + padding * 2
-        cell_h = max_height + padding * 2
+        Args:
+            layer_width, layer_height: Target surface size in pixels.
+            text: The string to render. Supports '\n'.
+            scale: Multiplier for glyph size (1.0 = font size).
+            position: (x,y) in pixels, offset from the top-left of the layer.
+            width: Optional wrap width in pixels. If None, wraps to the right edge.
+            alignment: 'left' | 'center' | 'right' (applied within the wrapping box).
+            letter_frame: If provided, only the first (letter_frame+1) characters are laid out.
 
-        cols = 16
-        rows = ((127 - 32) + cols - 1) // cols
+        Returns:
+            np.ndarray with shape (N, ) of interleaved [x, y, u, v] for 6 verts per glyph (two triangles).
+        """
+        if not text:
+            return np.zeros((0,), dtype=np.float32)
 
-        atlas_width = cols * cell_w
-        atlas_height = rows * cell_h
+        # Clamp text by letter_frame for typing/animation effects
+        if letter_frame is not None:
+            if letter_frame < 0:
+                return np.zeros((0,), dtype=np.float32)
+            text = text[: letter_frame + 1]
 
-        atlas_surface = pygame.Surface(
-            (atlas_width, atlas_height), pygame.SRCALPHA, 32
-        ).convert_alpha()
-        atlas_surface.fill((0, 0, 0, 0))
+        # Convert layout quantities to NDC
+        left_ndc, top_ndc = self._pixels_to_ndc(position[0], position[1], layer_width, layer_height)
+        box_width_ndc = (
+            2.0 * (width / layer_width) if width is not None
+            else 1.0 - left_ndc  # from left edge of box to NDC right edge (+1)
+        )
 
-        for i, char_code in enumerate(range(32, 127)):
-            char = chr(char_code)
-            rendered_char = self.font.render(char, True, (255, 255, 255))
-            char_w, char_h = rendered_char.get_size()
+        # Precompute per-char NDC advances
+        def px_w_to_ndc(px: float) -> float:
+            return 2.0 * (px / layer_width) * scale
+
+        def px_h_to_ndc(px: float) -> float:
+            return 2.0 * (px / layer_height) * scale
+
+        # Layout: break into lines (word-aware) limited by box_width_ndc
+        lines: List[List[Tuple[str, float, float]]] = []  # list of lines, each as [(char, w_ndc, h_ndc)]
+        current: List[Tuple[str, float, float]] = []
+        line_w = 0.0
+        line_h = 0.0
+
+        def commit_line():
+            nonlocal current, line_w, line_h
+            if current:
+                lines.append(current)
+                current = []
+            line_w = 0.0
+            line_h = 0.0
+
+        tokens = FontAtlas._tokenize(text)  # words + spaces + newlines
+
+        for tok in tokens:
+            if tok == "\n":
+                commit_line()
+                continue
+
+            # Measure token in NDC; try word-wise to avoid mid-word breaks
+            tok_quads: List[Tuple[str, float, float]] = []
+            tok_w = 0.0
+            tok_h = 0.0
+            for ch in tok:
+                g = self.glyphs.get(ch)
+                if not g:
+                    # Unknown char: approximate using space width
+                    w_ndc = px_w_to_ndc(self.space_advance_px)
+                    h_ndc = px_h_to_ndc(self.linesize)
+                else:
+                    w_ndc = px_w_to_ndc(g.size_px[0])
+                    h_ndc = px_h_to_ndc(g.size_px[1])
+                tok_quads.append((ch, w_ndc, h_ndc))
+                tok_w += w_ndc
+                tok_h = max(tok_h, h_ndc)
+
+            # If token doesn't fit, wrap (unless it's at line start, then we will place it anyway)
+            if line_w > 0.0 and (line_w + tok_w) > box_width_ndc:
+                commit_line()
+
+            # If the token is still too wide (very long word), fall back to per-char wrapping
+            if tok_w > box_width_ndc and len(tok) > 1:
+                for ch, w_ndc, h_ndc in tok_quads:
+                    if line_w > 0.0 and (line_w + w_ndc) > box_width_ndc:
+                        commit_line()
+                    current.append((ch, w_ndc, h_ndc))
+                    line_w += w_ndc
+                    line_h = max(line_h, h_ndc)
+            else:
+                # Append token as a whole
+                for ch, w_ndc, h_ndc in tok_quads:
+                    current.append((ch, w_ndc, h_ndc))
+                line_w += tok_w
+                line_h = max(line_h, tok_h)
+
+        commit_line()
+
+        # Build vertices with alignment applied within the box [left_ndc, left_ndc + box_width_ndc]
+        verts: List[float] = []
+        y = top_ndc
+        for line in lines:
+            lw = sum(w for _, w, _ in line)
+            lh = max((h for _, _, h in line), default=0.0)
+
+            x = self._aligned_start_x(left_ndc, box_width_ndc, lw, alignment)
+
+            for ch, w, h in line:
+                g = self.glyphs.get(ch)
+                if not g:
+                    x += w  # skip unknown characters but advance
+                    continue
+
+                u1, v1, u2, v2 = g.uv
+
+                # two triangles (x,y is top-left in NDC)
+                verts.extend([
+                    x,     y - h, u1, v2,  # bottom-left
+                    x + w, y - h, u2, v2,  # bottom-right
+                    x,     y,     u1, v1,  # top-left
+
+                    x,     y,     u1, v1,  # top-left
+                    x + w, y - h, u2, v2,  # bottom-right
+                    x + w, y,     u2, v1,  # top-right
+                ])
+
+                x += w
+
+            y -= lh  # next baseline downwards
+
+        return np.asarray(verts, dtype=np.float32)
+
+    def _build_atlas_surface(self) -> pygame.Surface:
+        """Rasterize glyphs, pack them in a grid, compute UVs & sizes."""
+        # Determine a reasonable cell size
+        widest = max(self.font.size("M")[0], self.font.size("W")[0], self.font.size("@")[0])
+        max_height = self.ascent + abs(self.descent)
+        cell_w = widest + 2 * self.PADDING_PX
+        cell_h = max_height + 2 * self.PADDING_PX
+
+        cols = self.ATLAS_COLS
+        num_chars = self.CHAR_END - self.CHAR_START + 1
+        rows = (num_chars + cols - 1) // cols
+
+        atlas_w = cols * cell_w
+        atlas_h = rows * cell_h
+
+        surf = pygame.Surface((atlas_w, atlas_h), pygame.SRCALPHA, 32).convert_alpha()
+        surf.fill((0, 0, 0, 0))
+
+        for i, code in enumerate(range(self.CHAR_START, self.CHAR_END + 1)):
+            ch = chr(code)
+            glyph_surface = self.font.render(ch, True, (255, 255, 255))
+            gw, gh = glyph_surface.get_size()
 
             col = i % cols
             row = i // cols
+            x_px = col * cell_w + self.PADDING_PX
+            y_px = row * cell_h + self.PADDING_PX
 
-            # Blit with proper vertical offset using ascent to preserve tops
-            x = col * cell_w + padding
-            y = row * cell_h + padding + (ascent - self.font.get_ascent())
+            # Blit at padding offset; pygame already gives a tight glyph surface
+            surf.blit(glyph_surface, (x_px, y_px))
 
-            atlas_surface.blit(rendered_char, (x, y))
+            # UVs with a small inward offset to prevent sampling bleeding
+            u1 = (x_px + self.UV_SHRINK) / atlas_w
+            v1 = 1.0 - (y_px + self.UV_SHRINK) / atlas_h
+            u2 = (x_px + gw - self.UV_SHRINK) / atlas_w
+            v2 = 1.0 - (y_px + gh - self.UV_SHRINK) / atlas_h
 
-            # Shrink UVs slightly to avoid bleeding
-            u1 = (col * cell_w + padding + 0.5) / atlas_width
-            v1 = 1 - (row * cell_h + padding + 0.5) / atlas_height
-            u2 = (col * cell_w + padding + char_w - 0.5) / atlas_width
-            v2 = 1 - (row * cell_h + padding + char_h - 0.5) / atlas_height
+            self.glyphs[ch] = Glyph(size_px=(gw, gh), uv=(u1, v1, u2, v2))
 
-            self.char_uvs[char] = (u1, v1, u2, v2)
-            self.char_sizes[char] = (char_w, char_h)
+        return surf
 
-        self.font_texture = engine.surface_to_texture(atlas_surface)
+    # ================================
+    # Helpers
+    # ================================
 
-    def get_char_batch(
-        self,
-        layer_width: int,
-        layer_height: int,
-        text: str,
-        letter_frame: int,
-        scale: float,
-        position: tuple,
-        width: float,
-    ) -> np.ndarray:
+    @staticmethod
+    def _pixels_to_ndc(x_px: float, y_px: float, layer_w: int, layer_h: int) -> Tuple[float, float]:
         """
-        Get the batch of characters of a string of text.
-
-        Parameters:
-        - layer_width: The width of the layer to draw on.
-        - layer_height: The height of the layer to draw on.
-        - text: The text to render.
-        - letter_frame: The number of letters to render (useful for animations).
-        - scale: Multiplier for glyph size (1.0 = original size).
-        - position: (x, y) offset in pixel coordinates, rellative to the layer. Default is top-left.
-        - width: the width at which to cause a line break. Default is the width of layer        
+        Convert top-left pixel position to NDC coordinates (OpenGL-style).
         """
-        text = text[: letter_frame + 1]
-        offset_x = (position[0] / layer_width) * 2 
-        offset_y = -(position[1] / layer_height) * 2
+        x_ndc = -1.0 + 2.0 * (x_px / layer_w)
+        y_ndc =  1.0 - 2.0 * (y_px / layer_h)
+        return x_ndc, y_ndc
 
-        x, y = -1.0 + offset_x, 1.0 + offset_y  # Start at the top-left corner
-        start_x = x
-        line_width = 0  # Track width of the current line
-        line_height = 0  # Track the maximum height of the current line
-
-        vertices = []
-
-        if width is not None:
-            max_width = (width / layer_width) * 2
-        else:
-            # The remaining width in normalized coords after offset_x (which is in -1 to 1 range)
-            # offset_x ranges from -1 to 1; we start drawing at -1 + offset_x
-            # The right edge is at +1, so available width is (1 - (-1 + offset_x)) = 2 - offset_x
-            # But offset_x may be positive or negative, so calculate accordingly:
-            start_x = -1.0 + offset_x
-            max_width = 1.0 - start_x  # distance from current start_x to right edge (+1)
-
-        for char in text:
-            if char in self.char_uvs and char in self.char_sizes:
-                uv = self.char_uvs[char]
-                char_w, char_h = self.char_sizes[
-                    char
-                ]  # Use true width from font rendering
-
-                # Convert pixel size to OpenGL normalized space (-1 to 1)
-                w = (char_w / layer_width) * 2 * scale
-                h = (char_h / layer_height) * 2 * scale
-
-                # Check if adding this character would exceed the width of the layer
-                if line_width + w > max_width:  # If line exceeds the width
-                    # Move to the next line
-                    x = start_x  # Reset x to the start of the line
-                    y -= line_height  # Move y down by the height of the current line
-                    line_width = 0  # Reset line width
-                    line_height = 0  # Reset line height
-                    #w = 0  # Skip space if new row
-
-                # Define quad vertices (adjusted for OpenGL top-left origin)
-                vertices.extend([
-                    x, y - h, uv[0], uv[3],  
-                    x + w, y - h, uv[2], uv[3],  
-                    x, y, uv[0], uv[1],  
-
-                    x, y, uv[0], uv[1],  
-                    x + w, y - h, uv[2], uv[3],  
-                    x + w, y, uv[2], uv[1]  
-                ])
-
-                # Update the current line's width and height
-                line_width += w
-                line_height = max(line_height, h)
-
-                x += w  # Move x to the next character's position
-
-        vertices = np.array(vertices, dtype=np.float32)
-
-        return vertices
-
-    def get_char_batch_aligned(
-        self,
-        layer_width: int,
-        layer_height: int,
-        text: str,
-        letter_frame: int,
-        scale: float,
-        alignment: str = "left",
-        position: tuple = (0.0, 0.0),
-        width: float = None,
-    ) -> np.ndarray:
+    @staticmethod
+    def _aligned_start_x(left: float, box_w: float, line_w: float, alignment: str) -> float:
         """
-        Get the aligned batch of characters of a string of text.
-
-        Parameters:
-        - layer_width: The width of the layer to draw on.
-        - layer_height: The height of the layer to draw on.
-        - text: The text to render.
-        - letter_frame: The number of letters to render (useful for animations).
-        - scale: Multiplier for glyph size (1.0 = original size).
-        - alignment: The alignment of the text, accepts 'left', 'center' and 'right'
-        - position: (x, y) offset in pixel coordinates, rellative to the layer. Default is top-left.
-        - width: the width at which to cause a line break. Default is the width of layer        
+        Compute the starting x for a given line width within a box anchored at `left` with width `box_w`.
         """
-        text = text[: letter_frame + 1]
+        a = alignment.lower()
+        if a == "center":
+            return left + max(0.0, (box_w - line_w) * 0.5)
+        if a == "right":
+            return left + max(0.0, (box_w - line_w))
+        # default 'left'
+        return left
 
-        offset_x = (position[0] / layer_width) * 2 - 1.0   # pixel to NDC X
-        offset_y = 1.0 - (position[1] / layer_height) * 2  # pixel to NDC Y, flipped vertically
+    def _tokenize(s: str) -> Iterable[str]:
+        """
+        Split into words, spaces, and newlines so we can wrap word-wise but preserve spacing.
+        Example: "Hello  world\n!" -> ["Hello", "  ", "world", "\n", "!"]
+        """
+        if not s:
+            return []
 
-        if width is not None:
-            max_width = (width / layer_width) * 2
-        else:
-            start_x = offset_x
-            max_width = 1.0 - start_x  # available width to the right edge
+        tokens: List[str] = []
+        buf: List[str] = []
+        mode: Optional[str] = None  # 'word' | 'space'
 
-        lines = []
-        current_line = []
-        line_width = 0.0
-        line_height = 0.0
-        max_line_height = 0.0
+        def flush():
+            nonlocal buf, mode
+            if buf:
+                tokens.append("".join(buf))
+                buf = []
+                mode = None
 
-        # --- Step 1: Break text into lines
-        for char in text:
-            if char in self.char_sizes:
-                char_w, char_h = self.char_sizes[char]
-                w = (char_w / layer_width) * 2 * scale
-                h = (char_h / layer_height) * 2 * scale
+        for ch in s:
+            if ch == "\n":
+                flush()
+                tokens.append("\n")
+                continue
+            if ch.isspace():
+                if mode != "space":
+                    flush()
+                    mode = "space"
+                buf.append(ch)
+            else:
+                if mode != "word":
+                    flush()
+                    mode = "word"
+                buf.append(ch)
 
-                if line_width + w > max_width:
-                    # Start new line
-                    lines.append((current_line, line_width, max_line_height))
-                    current_line = []
-                    line_width = 0
-                    max_line_height = 0
-
-                current_line.append((char, w, h))
-                line_width += w
-                max_line_height = max(max_line_height, h)
-
-        if current_line:
-            lines.append((current_line, line_width, max_line_height))
-
-        # --- Step 2: Render lines with alignment
-        vertices = []        
-
-        if alignment == "center":
-            base_x = lambda lw: -lw / 2 + offset_x
-        elif alignment == "right":
-            base_x = lambda lw: 1.0 - lw + offset_x
-        else:  # left
-            base_x = lambda lw: -1.0 + offset_x
-
-        y = offset_y # Start from top of screen
-
-        for line_chars, line_width, line_height in lines:
-            x = base_x(line_width)
-            # Determine starting x based on alignment
-            if alignment == "center":
-                x =1 -line_width / 2 + offset_x
-            elif alignment == "right":
-                x = 2.0 - line_width + offset_x
-            else:  # left
-                x =  offset_x
-
-            for char, w, h in line_chars:
-                uv = self.char_uvs[char]
-
-                vertices.extend([
-                    x, y - h, uv[0], uv[3],  
-                    x + w, y - h, uv[2], uv[3],  
-                    x, y, uv[0], uv[1],  
-
-                    x, y, uv[0], uv[1],  
-                    x + w, y - h, uv[2], uv[3],  
-                    x + w, y, uv[2], uv[1]  
-                ])
-
-                x += w  # Move to next char
-
-            y -= line_height  # Move down for next line
-
-        vertices = np.array(vertices, dtype=np.float32)
-
-        return vertices
+        flush()
+        return tokens

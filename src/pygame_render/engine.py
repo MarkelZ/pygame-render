@@ -772,7 +772,7 @@ class RenderEngine:
         letter_frame: int,
         color: tuple = (1.0, 1.0, 1.0, 1.0),
         scale: float = 1.0,
-        alignment: str = None,
+        alignment: str = 'left',
         position: tuple = (0.0, 0.0), 
         width: float = None,
     ):
@@ -793,15 +793,7 @@ class RenderEngine:
         if len(color) == 3:
             color = (color[0], color[1], color[2], 1.0)
 
-        if alignment == None:
-            vertices = font_atlas.get_char_batch(
-                layer.width, layer.height, text, letter_frame, scale, position, width
-            )
-        else:
-            vertices = font_atlas.get_char_batch_aligned(
-                layer.width, layer.height, text, letter_frame, scale, alignment, position, width
-            )
-
+        vertices = font_atlas.build_vertices(layer.width, layer.height, text, letter_frame=letter_frame, scale=scale, position=position, width=width, alignment=alignment)
         font_atlas.font_texture.use(location=0)  # Bind the font texture at location 0
 
         vbo = self._ctx.buffer(vertices.tobytes())
