@@ -1,7 +1,7 @@
 from importlib import resources
 import warnings
 import numbers
-from math import sin, cos
+from math import sin, cos, radians
 
 import moderngl
 from moderngl import Texture, Context, NEAREST
@@ -554,6 +554,92 @@ class RenderEngine:
         shader.clear_sampler2D_uniforms()
         vbo.release()
         vao.release()
+
+    def render_batch_unique(
+        self,
+        tex: Texture,
+        layer: Layer,
+        transforms: list[dict],
+        shader: Shader = None,
+        hdr_render: bool = False,
+        instance_uniforms: dict[str, list] = None,
+    ) -> None:
+    
+        if hdr_render:
+            shader = self._shader_tonemap
+        elif shader is None:
+            shader = self._shader_draw
+
+        # Static base quad (normalized to [-0.5, 0.5])
+        base_quad = np.array([
+            [-0.5, -0.5], [0.0, 1.0],
+            [ 0.5, -0.5], [1.0, 1.0],
+            [-0.5,  0.5], [0.0, 0.0],
+            [-0.5,  0.5], [0.0, 0.0],
+            [ 0.5, -0.5], [1.0, 1.0],
+            [ 0.5,  0.5], [1.0, 0.0],
+        ], dtype=np.float32)
+
+        base_vbo = self._ctx.buffer(base_quad.tobytes())
+        vao_bindings = [(base_vbo, "2f 2f", "vertexPos", "vertexTexCoord")]
+
+        # Per-instance VBOs
+        instance_vbos = []
+
+        positions = []
+        scales = []
+        angles = []
+
+        for tf in transforms:
+            positions.append(tf.get("position", (0, 0)))
+            base_scale = tf.get("scale", 1.0)
+            if isinstance(base_scale, (float, int)):
+                base_scale = (base_scale, base_scale)
+
+            section = tf.get("section", pygame.Rect(0, 0, tex.width, tex.height))
+            pixel_scale = (section.width * base_scale[0] * 1, section.height * base_scale[1]*1)
+            scales.append(pixel_scale)
+            angle_in_radians = radians(tf.get('angle', 0.0))
+            angles.append(angle_in_radians)
+
+        def add_instance_attr(name, data, fmt):
+            arr = np.array(data, dtype=np.float32)
+            buf = self._ctx.buffer(arr)
+            vao_bindings.append((buf, f"{fmt}/i", name))
+            instance_vbos.append(buf)
+
+        add_instance_attr("position", positions, "2f")
+        add_instance_attr("scale", scales, "2f")
+        add_instance_attr("angle", angles, "1f")
+
+        if instance_uniforms:
+            for name, values in instance_uniforms.items():
+                first = values[0]
+                if isinstance(first, (float, int)):
+                    fmt = "1f"
+                    data = np.array(values, dtype=np.float32).reshape(-1, 1)
+                elif isinstance(first, (tuple, list)):
+                    fmt = f"{len(first)}f"
+                    data = np.array(values, dtype=np.float32)
+                else:
+                    raise TypeError(f"Unsupported type for '{name}'")
+                add_instance_attr(name, data, fmt)
+
+        vao = self._ctx.vertex_array(shader.program, vao_bindings)
+
+        tex.use()
+        shader.bind_sampler2D_uniforms()
+        layer.framebuffer.use()
+
+        shader["screenSize"] = (layer.width, layer.height)
+
+        vao.render(moderngl.TRIANGLES, instances=len(positions))
+
+        shader.clear_sampler2D_uniforms()
+        vao.release()
+        base_vbo.release()
+        for buf in instance_vbos:
+            buf.release()
 
     def render_batch_a_bit_faster(
         self,
