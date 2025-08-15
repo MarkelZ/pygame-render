@@ -4,7 +4,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "pygame-render"
-version = "1.4.0"
+version = "1.4.2"
 description = "Fast 2D render engine for Pygame."
 readme = "README.md"
 authors = [{ name = "Markel Zubia" }]
