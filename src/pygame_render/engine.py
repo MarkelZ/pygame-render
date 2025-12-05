@@ -220,11 +220,10 @@ class RenderEngine:
             moderngl.Texture: Converted texture.
         """
 
-        img_flip = pygame.transform.flip(sfc, False, True)
-        img_data = pygame.image.tostring(img_flip, "RGBA")
 
-        tex = self._ctx.texture(sfc.get_size(), components=4, data=img_data)
+        tex = self._ctx.texture(sfc.get_size(), components=4, data=pygame.transform.flip(sfc, False, True).get_buffer())
         tex.filter = (moderngl.NEAREST, moderngl.NEAREST)
+        tex.swizzle = "BGRA"
         return tex
 
     def load_texture(self, path: str) -> moderngl.Texture:
