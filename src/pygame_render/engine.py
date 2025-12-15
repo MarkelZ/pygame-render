@@ -206,23 +206,33 @@ class RenderEngine:
 
         Formula: out = src * src_alpha + dst * (1 - src_alpha)
         """
-        self._ctx.blend_func = (moderngl.SRC_ALPHA, moderngl.ONE_MINUS_SRC_ALPHA,
-                                moderngl.ONE, moderngl.ONE_MINUS_SRC_ALPHA)
+        self._ctx.blend_func = (
+            moderngl.SRC_ALPHA,
+            moderngl.ONE_MINUS_SRC_ALPHA,
+            moderngl.ONE,
+            moderngl.ONE_MINUS_SRC_ALPHA,
+        )
 
-    def surface_to_texture(self, sfc: pygame.Surface) -> moderngl.Texture:
+    def surface_to_texture(
+        self, sfc: pygame.Surface, filter: tuple[int, int] = (NEAREST, NEAREST)
+    ) -> moderngl.Texture:
         """
         Convert a pygame.Surface to a moderngl.Texture.
 
         Args:
             sfc (pygame.Surface): Surface to convert.
+            filter (tuple[int, int]): The texture's filter.
 
         Returns:
             moderngl.Texture: Converted texture.
         """
 
-
-        tex = self._ctx.texture(sfc.get_size(), components=4, data=pygame.transform.flip(sfc, False, True).get_buffer())
-        tex.filter = (moderngl.NEAREST, moderngl.NEAREST)
+        tex = self._ctx.texture(
+            sfc.get_size(),
+            components=4,
+            data=pygame.transform.flip(sfc, False, True).get_buffer(),
+        )
+        tex.filter = filter
         tex.swizzle = "BGRA"
         return tex
 
@@ -514,7 +524,7 @@ class RenderEngine:
         if len(color) == 3:
             color = (color[0], color[1], color[2], 255)
 
-        color = [c / 255.0 for c in color] # Convert from [0, 255] to [0.0, 1.0]
+        color = [c / 255.0 for c in color]  # Convert from [0, 255] to [0.0, 1.0]
 
         # Enable MSAA
         if antialias:
@@ -773,8 +783,8 @@ class RenderEngine:
         letter_frame: int,
         color: tuple,
         scale: float = 1.0,
-        alignment: str = 'left',
-        position: tuple = (0.0, 0.0), 
+        alignment: str = "left",
+        position: tuple = (0.0, 0.0),
         width: float = None,
     ):
         """
@@ -794,9 +804,18 @@ class RenderEngine:
         if len(color) == 3:
             color = (color[0], color[1], color[2], 255)
 
-        color = [c / 255.0 for c in color] # Convert from [0, 255] to [0.0, 1.0]
+        color = [c / 255.0 for c in color]  # Convert from [0, 255] to [0.0, 1.0]
 
-        vertices = font_atlas.build_vertices(layer.width, layer.height, text, letter_frame=letter_frame, scale=scale, position=position, width=width, alignment=alignment)
+        vertices = font_atlas.build_vertices(
+            layer.width,
+            layer.height,
+            text,
+            letter_frame=letter_frame,
+            scale=scale,
+            position=position,
+            width=width,
+            alignment=alignment,
+        )
         font_atlas.font_texture.use(location=0)  # Bind the font texture at location 0
 
         vbo = self._ctx.buffer(vertices.tobytes())
