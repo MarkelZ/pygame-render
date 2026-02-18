@@ -115,17 +115,11 @@ class Shader:
     def configure_sprite_pipeline(
         self,
         uses_transform_vertex: bool,
-        image_sampler_name: str = "imageTexture",
-        texture_unit: int = 0,
     ) -> None:
         """
         Configure common sprite-rendering conventions for this shader.
         """
         self.uses_transform_vertex = uses_transform_vertex
-        try:
-            self._program[image_sampler_name].value = texture_unit
-        except KeyError:
-            pass
 
     def release(self):
         """
