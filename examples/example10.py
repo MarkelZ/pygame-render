@@ -31,7 +31,7 @@ while running:
         text_layer,
         "ABCDEFGHIJKLMNOPQRSTUVWXYZ, abcdefghijklmnopqrstuvwxyz",
         letter_frame=int(time),
-        color=(0, 1, 0, 1),
+        color=(0, 255, 0, 255),
         scale=1,
         position=(10, 10)
     )

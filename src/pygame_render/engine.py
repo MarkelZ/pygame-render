@@ -940,7 +940,6 @@ class RenderEngine:
         position: tuple = (0.0, 0.0), 
         width: float = None,
     ):
-        self._invalidate_fast_state_cache()
         """
         Render the text on the specified layer with an optional color.
 
@@ -962,6 +961,14 @@ class RenderEngine:
 
         vertices = font_atlas.build_vertices(layer.width, layer.height, text, letter_frame=letter_frame, scale=scale, position=position, width=width, alignment=alignment)
         font_atlas.font_texture.use(location=0)  # Bind the font texture at location 0
+
+        vbo = self._ctx.buffer(vertices.tobytes())
+        vao = self._ctx.vertex_array(
+            self._shader_text.program,
+            [
+                (vbo, "2f 2f", "vertexPos", "vertexTexCoord"),
+            ],
+        )
 
         self._shader_text.program["textColor"].value = (
             color  # Pass the color to the shader
