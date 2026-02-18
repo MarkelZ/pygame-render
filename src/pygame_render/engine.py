@@ -19,7 +19,6 @@ from pygame_render.util import (
     to_source_coords,
 )
 
-
 class RenderEngine:
     """
     A rendering engine for 2D graphics using Pygame and ModernGL.
@@ -156,6 +155,9 @@ class RenderEngine:
             vertex_shader=vertex_src, fragment_shader=fragment_src_text
         )
         self._shader_text = Shader(prog_text)
+
+        self._quad_vbo = self._ctx.buffer(reserve=24 * 4)
+        self._quad_vao_cache = {}  # key: shader.program.glo -> vao        
 
     @property
     def screen(self) -> Layer:
@@ -427,73 +429,49 @@ class RenderEngine:
         self,
         tex: Texture,
         layer: Layer,
-        dest_vertices: list[(float, float)],
-        section_vertices: list[(float, float)],
+        dest_vertices: list[tuple[float, float]],
+        section_vertices: list[tuple[float, float]],
         shader: Shader = None,
     ) -> None:
-        """
-        Render a texture onto a layer given lists of vertices.
-
-        Parameters:
-        - tex (Texture): The texture to render.
-        - layer (Layer): The layer to render onto.
-        - dest_vertices (list[(float, float)]): The destination coordinates on the target layer.
-        - section_vertices (list[(float, float)]): The section of the texture to render.
-        - shader (Shader): The shader program to use for rendering. If None, a default shader is used. Default is None.
-
-        Returns:
-        None
-        """
-
-        # Default to draw shader program if none
-        if shader == None:
+        if shader is None:
             shader = self._shader_draw
 
-        # Convert to destination coordinates
-        vertex_coords = [
-            to_dest_coords(p, layer.width, layer.height) for p in dest_vertices
-        ]
-
-        # Mesh for destination rect on screen
+        # Convert to destination coordinates (NDC)
+        vertex_coords = [to_dest_coords(p, layer.width, layer.height) for p in dest_vertices]
         p1, p2, p3, p4 = vertex_coords
-        vertex_data = np.array([p3, p4, p2, p2, p4, p1], dtype=np.float32)
+        vertex_data = np.array([p3, p4, p2, p2, p4, p1], dtype=np.float32)  # (6,2)
 
-        # Calculate the texture coordinates
-        section_coords = [
-            to_source_coords(p, tex.width, tex.height) for p in section_vertices
-        ]
-
-        # Mesh for the section within the texture
+        # Texture UVs
+        section_coords = [to_source_coords(p, tex.width, tex.height) for p in section_vertices]
         p1, p2, p3, p4 = section_coords
-        section_data = np.array([p3, p4, p1, p1, p4, p2], dtype=np.float32)
+        section_data = np.array([p3, p4, p1, p1, p4, p2], dtype=np.float32)  # (6,2)
 
-        # Create VBO and VAO
-        buffer_data = np.hstack([vertex_data, section_data])
+        # Interleave into (6,4): [x,y,u,v]
+        buffer_data = np.hstack([vertex_data, section_data]).astype(np.float32, copy=False)
 
-        vbo = self._ctx.buffer(buffer_data)
-        vao = self._ctx.vertex_array(
-            shader.program,
-            [
-                (vbo, "2f 2f", "vertexPos", "vertexTexCoord"),
-            ],
-        )
+        # Upload
+        self._quad_vbo.orphan(buffer_data.nbytes)
+        self._quad_vbo.write(buffer_data.tobytes())
 
-        # Use textures
+        # IMPORTANT: bind target + texture + sampler uniforms (this is what you were missing)
+        layer.framebuffer.use()
         tex.use()
         shader.bind_sampler2D_uniforms()
 
-        # Set layer as target
-        layer.framebuffer.use()
+        # VAO cache per program
+        key = shader.program.glo
+        vao = self._quad_vao_cache.get(key)
+        if vao is None:
+            vao = self._ctx.vertex_array(
+                shader.program,
+                [(self._quad_vbo, "2f 2f", "vertexPos", "vertexTexCoord")],
+            )
+            self._quad_vao_cache[key] = vao
 
-        # Render
-        vao.render()
-
-        # Clear the sampler2D locations
+        vao.render(moderngl.TRIANGLES)
         shader.clear_sampler2D_uniforms()
 
-        # Free vertex data
-        vbo.release()
-        vao.release()
+
 
     def render_primitive(
         self,
@@ -800,14 +778,6 @@ class RenderEngine:
         vertices = font_atlas.build_vertices(layer.width, layer.height, text, letter_frame=letter_frame, scale=scale, position=position, width=width, alignment=alignment)
         font_atlas.font_texture.use(location=0)  # Bind the font texture at location 0
 
-        vbo = self._ctx.buffer(vertices.tobytes())
-        vao = self._ctx.vertex_array(
-            self._shader_text.program,
-            [
-                (vbo, "2f 2f", "vertexPos", "vertexTexCoord"),
-            ],
-        )
-
         self._shader_text.program["textColor"].value = (
             color  # Pass the color to the shader
         )
@@ -837,6 +807,11 @@ class RenderEngine:
         self._screen = None
         self._ctx = None
 
+        for vao in self._quad_vao_cache.values():
+            vao.release()
+        self._quad_vao_cache.clear()
+        self._quad_vbo.release()     
+     
     def __del__(self):
         # Check if ctx is None to avoid double-freeing
         if self._ctx != None:
