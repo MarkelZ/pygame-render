@@ -75,12 +75,6 @@ class FontAtlas:
         if not text:
             return np.zeros((0,), dtype=np.float32)
 
-        # Clamp text by letter_frame for typing/animation effects
-        if letter_frame is not None:
-            if letter_frame < 0:
-                return np.zeros((0,), dtype=np.float32)
-            text = text[: letter_frame + 1]
-
         # Convert layout quantities to NDC
         left_ndc, top_ndc = self._pixels_to_ndc(position[0], position[1], layer_width, layer_height)
         box_width_ndc = (
@@ -95,7 +89,8 @@ class FontAtlas:
         def px_h_to_ndc(px: float) -> float:
             return 2.0 * (px / layer_height) * scale
 
-        # Layout: break into lines (word-aware) limited by box_width_ndc
+        # STEP 1: Layout the FULL text to determine where each character should be positioned
+        # This ensures words don't jump around during animation
         lines: List[List[Tuple[str, float, float]]] = []  # list of lines, each as [(char, w_ndc, h_ndc)]
         current: List[Tuple[str, float, float]] = []
         line_w = 0.0
@@ -116,7 +111,7 @@ class FontAtlas:
                 commit_line()
                 continue
 
-            # Measure token in NDC; try word-wise to avoid mid-word breaks
+            # Measure token in NDC
             tok_quads: List[Tuple[str, float, float]] = []
             tok_w = 0.0
             tok_h = 0.0
@@ -133,26 +128,49 @@ class FontAtlas:
                 tok_w += w_ndc
                 tok_h = max(tok_h, h_ndc)
 
-            # If token doesn't fit, wrap (unless it's at line start, then we will place it anyway)
-            if line_w > 0.0 and (line_w + tok_w) > box_width_ndc:
-                commit_line()
+            # Check if this is a word (not just spaces)
+            is_word = not tok.isspace()
+            
+            # For words: check if word fits on current line
+            if is_word and line_w > 0.0:
+                # If this word doesn't fit, wrap to new line BEFORE adding it
+                if (line_w + tok_w) > box_width_ndc:
+                    # Remove trailing spaces before wrapping
+                    while current and current[-1][0].isspace():
+                        removed_ch, removed_w, removed_h = current.pop()
+                        line_w -= removed_w
+                    commit_line()
 
-            # If the token is still too wide (very long word), fall back to per-char wrapping
-            if tok_w > box_width_ndc and len(tok) > 1:
-                for ch, w_ndc, h_ndc in tok_quads:
-                    if line_w > 0.0 and (line_w + w_ndc) > box_width_ndc:
-                        commit_line()
-                    current.append((ch, w_ndc, h_ndc))
-                    line_w += w_ndc
-                    line_h = max(line_h, h_ndc)
-            else:
-                # Append token as a whole
-                for ch, w_ndc, h_ndc in tok_quads:
-                    current.append((ch, w_ndc, h_ndc))
-                line_w += tok_w
-                line_h = max(line_h, tok_h)
+            # Append the entire token as one unit (never break words)
+            for ch, w_ndc, h_ndc in tok_quads:
+                current.append((ch, w_ndc, h_ndc))
+            line_w += tok_w
+            line_h = max(line_h, tok_h)
 
         commit_line()
+        
+        # STEP 2: Now apply letter_frame by only rendering characters up to that index
+        # But they keep their pre-calculated positions from the full layout
+        if letter_frame is not None:
+            if letter_frame < 0:
+                return np.zeros((0,), dtype=np.float32)
+            
+            # Flatten lines to count characters and truncate
+            char_index = 0
+            truncated_lines = []
+            for line in lines:
+                truncated_line = []
+                for char_data in line:
+                    if char_index <= letter_frame:
+                        truncated_line.append(char_data)
+                        char_index += 1
+                    else:
+                        break
+                if truncated_line:
+                    truncated_lines.append(truncated_line)
+                if char_index > letter_frame:
+                    break
+            lines = truncated_lines
 
         # Build vertices with alignment applied within the box [left_ndc, left_ndc + box_width_ndc]
         verts: List[float] = []

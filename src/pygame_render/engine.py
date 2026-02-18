@@ -1,7 +1,7 @@
 from importlib import resources
 import warnings
 import numbers
-from math import sin, cos
+from math import sin, cos, radians
 
 import moderngl
 from moderngl import Texture, Context, NEAREST
@@ -116,6 +116,7 @@ class RenderEngine:
             vertex_shader=vertex_src, fragment_shader=fragment_src_draw
         )
         self._shader_draw = Shader(prog_draw)
+        self._shader_draw.configure_sprite_pipeline(False)
 
         # Read the tone mapping shader
         fragment_src_tonemap = resources.read_text(
@@ -127,6 +128,7 @@ class RenderEngine:
             vertex_shader=vertex_src, fragment_shader=fragment_src_tonemap
         )
         self._shader_tonemap = Shader(prog_tonemap)
+        self._shader_tonemap.configure_sprite_pipeline(False)
         self._exposure: float
         self.HDR_exposure = 0.1
 
@@ -156,8 +158,41 @@ class RenderEngine:
         )
         self._shader_text = Shader(prog_text)
 
+        # Fast path shaders: transforms are done in vertex shader.
+        vertex_src_transform = resources.read_text("pygame_render", "vertex_transform.glsl")
+        prog_draw_fast = self._ctx.program(
+            vertex_shader=vertex_src_transform, fragment_shader=fragment_src_draw
+        )
+        self._shader_draw_fast = Shader(prog_draw_fast)
+        self._shader_draw_fast.configure_sprite_pipeline(True)
+
+        prog_tonemap_fast = self._ctx.program(
+            vertex_shader=vertex_src_transform, fragment_shader=fragment_src_tonemap
+        )
+        self._shader_tonemap_fast = Shader(prog_tonemap_fast)
+        self._shader_tonemap_fast.configure_sprite_pipeline(True)
+
         self._quad_vbo = self._ctx.buffer(reserve=24 * 4)
         self._quad_vao_cache = {}  # key: shader.program.glo -> vao        
+
+        # Static unit quad for render_fast() (6 vertices, 2 components each)
+        quad_data = np.array(
+            [
+                [0.0, 1.0],
+                [1.0, 1.0],
+                [0.0, 0.0],
+                [0.0, 0.0],
+                [1.0, 1.0],
+                [1.0, 0.0],
+            ],
+            dtype="f4",
+        )
+        self._quad_fast_vbo = self._ctx.buffer(quad_data.tobytes())
+        self._quad_fast_vao_cache = {}
+
+        # Render state cache (fast path)
+        self._last_fbo_glo = None
+        self._last_tex_glo = None
 
     @property
     def screen(self) -> Layer:
@@ -181,6 +216,12 @@ class RenderEngine:
     def HDR_exposure(self, value: float) -> None:
         self._exposure = value
         self._shader_tonemap["exposure"] = value
+        if hasattr(self, "_shader_tonemap_fast"):
+            self._shader_tonemap_fast["exposure"] = value
+
+    def _invalidate_fast_state_cache(self) -> None:
+        self._last_fbo_glo = None
+        self._last_tex_glo = None
 
     def use_alpha_blending(self, enabled: bool) -> None:
         """
@@ -302,23 +343,33 @@ class RenderEngine:
     def make_font_atlas(self, font_path: str = None, font_size: int = 64) -> FontAtlas:
         return FontAtlas(self, font_path, font_size)
 
-    def load_shader_from_path(self, vertex_path: str, fragment_path: str) -> Shader:
+    def load_shader_from_path(
+        self,
+        vertex_path: str | None,
+        fragment_path: str,
+    ) -> Shader:
         """
         Loads shader source code from specified file paths and creates a shader program.
 
         Parameters:
-        - vertex_path (str): File path to the vertex shader source code.
+        - vertex_path (str | None): File path to the vertex shader source code.
+          If None, pygame_render/vertex_transform.glsl is used.
         - fragment_path (str): File path to the fragment shader source code.
 
         Returns:
         - A Shader object representing the compiled shader program.
         """
-        with open(vertex_path) as f:
-            vertex_src = f.read()
+        if vertex_path is None:
+            vertex_src = resources.read_text("pygame_render", "vertex_transform.glsl")
+        else:
+            with open(vertex_path) as f:
+                vertex_src = f.read()
         with open(fragment_path) as f:
             fragment_src = f.read()
 
-        return self.make_shader(vertex_src, fragment_src)
+        shader = self.make_shader(vertex_src, fragment_src)
+        shader.configure_sprite_pipeline(vertex_path is None)
+        return shader
 
     def reserve_uniform_block(self, shader: Shader, ubo_name: str, nbytes: int) -> None:
         """
@@ -366,6 +417,7 @@ class RenderEngine:
         section: pygame.Rect | None = None,
         shader: Shader = None,
         hdr_render: bool = False,
+        mode: str = "auto",
     ) -> None:
         """
         Render a texture onto a layer with optional transformations.
@@ -380,6 +432,7 @@ class RenderEngine:
         - section (pygame.Rect | None): The section of the texture to render. If None, the entire texture is rendered. Default is None.
         - shader (Shader): The shader program to use for rendering. If None, a default shader is used. Default is None.
         - hdr_render (bool): Whether to render using HDR texture with tone mapping. Default is False (SDR).
+        - mode (str): "auto", "legacy", or "transform".
 
         Returns:
         None
@@ -389,10 +442,44 @@ class RenderEngine:
         - If flip is a boolean, it will only affect the x axis.
         - If section is None, the entire texture is used.
         - If section is larger than the texture, the texture is repeated to fill the section.
-        - If shader is None, a default shader (_prog_draw) is used.
-        - If hdr_render is True, it uses an HDR texture with tone mapping applied.
+        - "legacy" uses CPU-side vertex generation (original path).
+        - "transform" uses GPU-side transforms (fast path).
+        - "auto" picks transform when shader is None or transform-compatible.
         """
+        if mode == "legacy":
+            self._render_cpu_vertices(
+                tex, layer, position, scale, angle, flip, section, shader, hdr_render
+            )
+            return
 
+        if mode == "transform":
+            self._render_gpu_transform(
+                tex, layer, position, scale, angle, flip, section, shader, hdr_render
+            )
+            return
+
+        # auto
+        if shader is None or getattr(shader, "uses_transform_vertex", False):
+            self._render_gpu_transform(
+                tex, layer, position, scale, angle, flip, section, shader, hdr_render
+            )
+        else:
+            self._render_cpu_vertices(
+                tex, layer, position, scale, angle, flip, section, shader, hdr_render
+            )
+
+    def _render_cpu_vertices(
+        self,
+        tex: Texture,
+        layer: Layer,
+        position: tuple[float, float] = (0, 0),
+        scale: tuple[float, float] | float = (1.0, 1.0),
+        angle: float = 0.0,
+        flip: tuple[bool, bool] | bool = (False, False),
+        section: pygame.Rect | None = None,
+        shader: Shader = None,
+        hdr_render: bool = False,
+    ) -> None:
         # Create section rect if none
         if section == None:
             section = pygame.Rect(0, 0, tex.width, tex.height)
@@ -425,6 +512,102 @@ class RenderEngine:
         # Render the texture
         self.render_from_vertices(tex, layer, dest_vertices, section_vertices, shader)
 
+    def _render_gpu_transform(
+        self,
+        tex: Texture,
+        layer: Layer,
+        position: tuple[float, float] = (0, 0),
+        scale: tuple[float, float] | float = (1.0, 1.0),
+        angle: float = 0.0,
+        flip: tuple[bool, bool] | bool = (False, False),
+        section: pygame.Rect | None = None,
+        shader: Shader = None,
+        hdr_render: bool = False,
+    ) -> None:
+        if section is None:
+            sx, sy = 0.0, 0.0
+            sw, sh = float(tex.width), float(tex.height)
+        else:
+            sx, sy = float(section.x), float(section.y)
+            sw, sh = float(section.width), float(section.height)
+
+        if isinstance(scale, numbers.Number):
+            scale = (float(scale), float(scale))
+        else:
+            scale = (float(scale[0]), float(scale[1]))
+
+        if isinstance(flip, bool):
+            flip = (flip, False)
+        flip_x, flip_y = bool(flip[0]), bool(flip[1])
+
+        if shader is None:
+            shader = self._shader_tonemap_fast if hdr_render else self._shader_draw_fast
+
+        # Skip draws fully outside destination layer bounds (CPU frustum cull).
+        scaled_w = sw * scale[0]
+        scaled_h = sh * scale[1]
+        if angle % 360.0 == 0.0 and not (flip_x or flip_y):
+            x, y = position
+            if (
+                x >= layer.width
+                or y >= layer.height
+                or x + scaled_w <= 0.0
+                or y + scaled_h <= 0.0
+            ):
+                return
+        else:
+            theta = radians(angle)
+            abs_cos = abs(cos(theta))
+            abs_sin = abs(sin(theta))
+            aabb_w = scaled_w * abs_cos + scaled_h * abs_sin
+            aabb_h = scaled_w * abs_sin + scaled_h * abs_cos
+            center_x = position[0] + scaled_w * 0.5
+            center_y = position[1] + scaled_h * 0.5
+            min_x = center_x - aabb_w * 0.5
+            min_y = center_y - aabb_h * 0.5
+            max_x = center_x + aabb_w * 0.5
+            max_y = center_y + aabb_h * 0.5
+            if (
+                min_x >= layer.width
+                or min_y >= layer.height
+                or max_x <= 0.0
+                or max_y <= 0.0
+            ):
+                return
+
+        # Bind framebuffer/texture only when they change.
+        fbo_glo = layer.framebuffer.glo
+        if self._last_fbo_glo != fbo_glo:
+            layer.framebuffer.use()
+            self._last_fbo_glo = fbo_glo
+
+        tex_glo = tex.glo
+        if self._last_tex_glo != tex_glo:
+            tex.use(location=0)
+            self._last_tex_glo = tex_glo
+
+        prog = shader.program
+        prog["uPosition"].value = (float(position[0]), float(position[1]))
+        prog["uSectionSize"].value = (sw, sh)
+        prog["uScale"].value = scale
+        prog["uAngleRad"].value = radians(angle)
+        prog["uFlipX"].value = int(flip_x)
+        prog["uFlipY"].value = int(flip_y)
+        prog["uSectionMin"].value = (sx / tex.width, sy / tex.height)
+        prog["uSectionMax"].value = ((sx + sw) / tex.width, (sy + sh) / tex.height)
+        prog["uLayerSize"].value = (float(layer.width), float(layer.height))
+
+        key = prog.glo
+        vao = self._quad_fast_vao_cache.get(key)
+        if vao is None:
+            vao = self._ctx.vertex_array(
+                prog,
+                [(self._quad_fast_vbo, "2f", "quadPos")],
+            )
+            self._quad_fast_vao_cache[key] = vao
+
+        vao.render(moderngl.TRIANGLES)
+
     def render_from_vertices(
         self,
         tex: Texture,
@@ -433,6 +616,7 @@ class RenderEngine:
         section_vertices: list[tuple[float, float]],
         shader: Shader = None,
     ) -> None:
+        self._invalidate_fast_state_cache()
         if shader is None:
             shader = self._shader_draw
 
@@ -472,7 +656,6 @@ class RenderEngine:
         shader.clear_sampler2D_uniforms()
 
 
-
     def render_primitive(
         self,
         layer: Layer,
@@ -481,6 +664,7 @@ class RenderEngine:
         antialias: bool = False,
         mode: int = moderngl.LINES,
     ):
+        self._invalidate_fast_state_cache()
         """
         Render a primitive shape (e.g., lines, triangles) on the specified layer.
 
@@ -756,6 +940,7 @@ class RenderEngine:
         position: tuple = (0.0, 0.0), 
         width: float = None,
     ):
+        self._invalidate_fast_state_cache()
         """
         Render the text on the specified layer with an optional color.
 
@@ -800,6 +985,9 @@ class RenderEngine:
           so there is no need to do it manually.
         """
         self._shader_draw.release()
+        self._shader_draw_fast.release()
+        self._shader_tonemap.release()
+        self._shader_tonemap_fast.release()
         self._screen.framebuffer.release()
         self._ctx.release()
 
@@ -811,7 +999,11 @@ class RenderEngine:
             vao.release()
         self._quad_vao_cache.clear()
         self._quad_vbo.release()     
-     
+        for vao in self._quad_fast_vao_cache.values():
+            vao.release()
+        self._quad_fast_vao_cache.clear()
+        self._quad_fast_vbo.release()     
+
     def __del__(self):
         # Check if ctx is None to avoid double-freeing
         if self._ctx != None:

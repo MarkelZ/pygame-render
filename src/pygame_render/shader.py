@@ -28,6 +28,9 @@ class Shader:
         self._fresh_location: int = 1
         self._sampler2D_locations: dict[str, tuple[Texture, int]] = {}
 
+        # Used by RenderEngine.render(mode="auto") path selection.
+        self.uses_transform_vertex: bool = False
+
     @property
     def program(self) -> Program:
         """Get the ModernGL shader program."""
@@ -108,6 +111,21 @@ class Shader:
         """
         self._sampler2D_locations.clear()
         self._fresh_location = 1
+
+    def configure_sprite_pipeline(
+        self,
+        uses_transform_vertex: bool,
+        image_sampler_name: str = "imageTexture",
+        texture_unit: int = 0,
+    ) -> None:
+        """
+        Configure common sprite-rendering conventions for this shader.
+        """
+        self.uses_transform_vertex = uses_transform_vertex
+        try:
+            self._program[image_sampler_name].value = texture_unit
+        except KeyError:
+            pass
 
     def release(self):
         """
