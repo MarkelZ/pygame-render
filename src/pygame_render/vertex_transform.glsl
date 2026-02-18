@@ -38,12 +38,10 @@ void main() {
     gl_Position = vec4(ndc, 0.0, 1.0);
 
     vec2 uvLocal = vec2(quadPos.x, 1.0 - quadPos.y);
-    if (uFlipX == 1) {
-        uvLocal.x = 1.0 - uvLocal.x;
-    }
-    if (uFlipY == 1) {
-        uvLocal.y = 1.0 - uvLocal.y;
-    }
+    // uFlipX/uFlipY as float uniforms: 0.0 or 1.0
+    uvLocal.x = mix(uvLocal.x, 1.0 - uvLocal.x, uFlipX);
+    uvLocal.y = mix(uvLocal.y, 1.0 - uvLocal.y, uFlipY);
+
     fragmentTexCoord = mix(uSectionMin, uSectionMax, uvLocal);
     fragmentColor = vec3(1.0, 1.0, 1.0);
 }
