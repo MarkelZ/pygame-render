@@ -31,7 +31,7 @@ while running:
         text_layer,
         text = "Before frost found the earth, there was only song.",
         letter_frame=int(time),
-        color=(255,255,255,255),
+        color=(0, 255, 0, 255),
         scale=1,
         position=(10, 10),
         width = 400,
