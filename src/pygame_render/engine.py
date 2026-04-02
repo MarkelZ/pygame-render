@@ -223,6 +223,13 @@ class RenderEngine:
         self._last_fbo_glo = None
         self._last_tex_glo = None
 
+    def _bind_primary_texture_uniform(self, shader: Shader) -> None:
+        """
+        Explicitly bind the engine's main sampled texture convention to unit 0.
+        """
+        if "imageTexture" in shader.program:
+            shader.program["imageTexture"].value = 0
+
     def use_alpha_blending(self, enabled: bool) -> None:
         """
         Enable or disable OpenGL alpha blending.
@@ -533,6 +540,11 @@ class RenderEngine:
         shader: Shader = None,
         hdr_render: bool = False,
     ) -> None:
+        if layer.texture is tex:
+            raise ValueError(
+                "RenderEngine.render() cannot sample from and render to the same texture."
+            )
+
         if section is None:
             sx, sy = 0.0, 0.0
             sw, sh = float(tex.width), float(tex.height)
@@ -584,16 +596,15 @@ class RenderEngine:
             ):
                 return
 
-        # Bind framebuffer/texture only when they change.
-        fbo_glo = layer.framebuffer.glo
-        if self._last_fbo_glo != fbo_glo:
-            layer.framebuffer.use()
-            self._last_fbo_glo = fbo_glo
+        # Bind explicitly for correctness across resource release/recreation and
+        # external GL state changes.
+        layer.framebuffer.use()
+        tex.use(location=0)
+        self._last_fbo_glo = layer.framebuffer.glo
+        self._last_tex_glo = tex.glo
 
-        tex_glo = tex.glo
-        if self._last_tex_glo != tex_glo:
-            tex.use(location=0)
-            self._last_tex_glo = tex_glo
+        self._bind_primary_texture_uniform(shader)
+        shader.bind_sampler2D_uniforms()
 
         prog = shader.program
         prog["uPosition"].value = (float(position[0]), float(position[1]))
@@ -616,6 +627,7 @@ class RenderEngine:
             self._quad_fast_vao_cache[key] = vao
 
         vao.render(moderngl.TRIANGLES)
+        shader.clear_sampler2D_uniforms()
 
     def render_from_vertices(
         self,
@@ -626,6 +638,10 @@ class RenderEngine:
         shader: Shader = None,
     ) -> None:
         self._invalidate_fast_state_cache()
+        if layer.texture is tex:
+            raise ValueError(
+                "RenderEngine.render_from_vertices() cannot sample from and render to the same texture."
+            )
         if shader is None:
             shader = self._shader_draw
 
@@ -649,6 +665,7 @@ class RenderEngine:
         # IMPORTANT: bind target + texture + sampler uniforms (this is what you were missing)
         layer.framebuffer.use()
         tex.use()
+        self._bind_primary_texture_uniform(shader)
         shader.bind_sampler2D_uniforms()
 
         # VAO cache per program
