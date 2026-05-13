@@ -959,8 +959,8 @@ class RenderEngine:
         font_atlas: FontAtlas,
         layer: Layer,
         text: str,
-        letter_frame: int,
-        color: tuple,
+        letter_frame: int = None,
+        color: tuple = (1.0, 1.0, 1.0),
         scale: float = 1.0,
         alignment: str = "left",
         position: tuple = (0.0, 0.0),
@@ -973,7 +973,7 @@ class RenderEngine:
         - font_atlas: The font atlas.
         - layer: The rendering layer to draw on.
         - text: The text to render.
-        - letter_frame: The number of letters to render (useful for animations).
+        - letter_frame: The number of letters to render (useful for animations). If None, entire string is rendered.
         - color: The color of the text as an RGBA tuple. Default is white (1.0, 1.0, 1.0, 1.0).
         - scale: Multiplier for glyph size (1.0 = original size).
         - alignment: The alignment of the text, accepts None, 'left', 'center' and 'right'.
@@ -984,6 +984,9 @@ class RenderEngine:
             color = (color[0], color[1], color[2], 255)
 
         color = [c / 255.0 for c in color]  # Convert from [0, 255] to [0.0, 1.0]
+
+        if letter_frame is None:
+            letter_frame = len(text) - 1
 
         vertices = font_atlas.build_vertices(
             layer.width,
