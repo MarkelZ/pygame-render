@@ -31,6 +31,11 @@ class Shader:
         # Used by RenderEngine.render(mode="auto") path selection.
         self.uses_transform_vertex: bool = False
 
+        # Populated for shaders created by RenderEngine.make_instanced_shader().
+        # The insertion order is the instance-buffer attribute order.
+        self.uses_instanced_vertex: bool = False
+        self.instance_attributes: dict[str, str] = {}
+
     @property
     def program(self) -> Program:
         """Get the ModernGL shader program."""
@@ -120,6 +125,14 @@ class Shader:
         Configure common sprite-rendering conventions for this shader.
         """
         self.uses_transform_vertex = uses_transform_vertex
+
+    def configure_instanced_pipeline(
+        self,
+        instance_attributes: dict[str, str],
+    ) -> None:
+        """Configure the custom data layout used by instanced rendering."""
+        self.uses_instanced_vertex = True
+        self.instance_attributes = dict(instance_attributes)
 
     def release(self):
         """
