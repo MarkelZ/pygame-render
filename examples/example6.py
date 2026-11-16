@@ -34,7 +34,7 @@ while running:
     # Render texture with uptime
     t = time() - start_time
     font_sfc = font.render(f'{t:.2f}', True,
-                           (255, 255, 255), (0, 0, 0))
+                           (255, 255, 255), (0, 0, 0)).convert_alpha()
     font_texture = engine.surface_to_texture(font_sfc)
 
     # Send font_texture to the shader

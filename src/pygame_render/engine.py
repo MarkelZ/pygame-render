@@ -1,6 +1,7 @@
 from importlib import resources
 import warnings
 import numbers
+import re
 from math import sin, cos, radians
 
 import moderngl
@@ -18,6 +19,35 @@ from pygame_render.util import (
     to_dest_coords,
     to_source_coords,
 )
+
+
+_INSTANCE_ATTRIBUTE_COMPONENTS = {
+    "float": 1,
+    "vec2": 2,
+    "vec3": 3,
+    "vec4": 4,
+}
+
+_INSTANCE_RESERVED_NAMES = {
+    "fragmentColor",
+    "fragmentTexCoord",
+    "quadPos",
+    "spritePosition",
+    "spriteScale",
+    "spriteAngleDeg",
+    "spriteFlip",
+    "spriteSection",
+    "uTextureSize",
+    "uLayerSize",
+}
+
+_INSTANCED_TRANSFORM_ATTRIBUTES = {
+    "spritePosition": "vec2",
+    "spriteScale": "vec2",
+    "spriteAngleDeg": "float",
+    "spriteFlip": "vec2",
+    "spriteSection": "vec4",
+}
 
 class RenderEngine:
     """
@@ -172,6 +202,13 @@ class RenderEngine:
         self._shader_tonemap_fast = Shader(prog_tonemap_fast)
         self._shader_tonemap_fast.configure_sprite_pipeline(True)
 
+        # The transform vertex shader is also the canonical template for the
+        # instanced pipeline. Its sprite uniforms are rewritten as attributes.
+        self._instanced_vertex_template = vertex_src_transform
+        self._shader_draw_instanced = self.make_instanced_shader(fragment_src_draw)
+        self._shader_tonemap_instanced = self.make_instanced_shader(fragment_src_tonemap)
+        self._shader_tonemap_instanced["exposure"] = self._exposure
+
         self._quad_vbo = self._ctx.buffer(reserve=24 * 4)
         self._quad_vao_cache = {}  # key: shader.program.glo -> vao        
 
@@ -189,6 +226,9 @@ class RenderEngine:
         )
         self._quad_fast_vbo = self._ctx.buffer(quad_data.tobytes())
         self._quad_fast_vao_cache = {}
+
+        # Each program/layout gets a capacity-cached streaming VBO and VAO.
+        self._instance_vao_cache = {}
 
         # Render state cache (fast path)
         self._last_fbo_glo = None
@@ -218,6 +258,8 @@ class RenderEngine:
         self._shader_tonemap["exposure"] = value
         if hasattr(self, "_shader_tonemap_fast"):
             self._shader_tonemap_fast["exposure"] = value
+        if hasattr(self, "_shader_tonemap_instanced"):
+            self._shader_tonemap_instanced["exposure"] = value
 
     def _invalidate_fast_state_cache(self) -> None:
         self._last_fbo_glo = None
@@ -356,6 +398,137 @@ class RenderEngine:
         shader = Shader(prog)
         return shader
 
+    def make_instanced_shader(
+        self,
+        fragment_src: str,
+        instance_attributes: dict[str, str] | None = None,
+    ) -> Shader:
+        """Create a shader for :meth:`render_instanced`.
+
+        ``instance_attributes`` maps fragment-shader uniform names to GLSL types.
+        Supported types are ``float``, ``vec2``, ``vec3``, and ``vec4``. The
+        fragment shader declares each value as an ordinary uniform, for example::
+
+            uniform float alpha;
+
+        During instanced compilation the engine changes explicitly listed
+        uniforms into flat fragment inputs, generates the corresponding vertex
+        attributes, and forwards their values to the fragment shader. Existing
+        ``flat in`` declarations are also accepted for compatibility.
+        """
+        attributes = dict(instance_attributes or {})
+        vertex_src = self._build_instanced_vertex_source(attributes)
+        fragment_src = self._transform_instance_uniforms(fragment_src, attributes)
+        shader = self.make_shader(vertex_src, fragment_src)
+        shader.configure_instanced_pipeline(attributes)
+        return shader
+
+    @staticmethod
+    def _transform_instance_uniforms(
+        fragment_src: str,
+        instance_attributes: dict[str, str],
+    ) -> str:
+        """Turn explicitly selected fragment uniforms into flat inputs."""
+        transformed = fragment_src
+
+        for name, glsl_type in instance_attributes.items():
+            escaped_name = re.escape(name)
+            escaped_type = re.escape(glsl_type)
+            uniform_pattern = re.compile(
+                rf"^(?P<indent>[ \t]*)uniform[ \t]+{escaped_type}"
+                rf"[ \t]+{escaped_name}[ \t]*;[ \t]*$",
+                re.MULTILINE,
+            )
+            input_pattern = re.compile(
+                rf"^[ \t]*flat[ \t]+in[ \t]+{escaped_type}"
+                rf"[ \t]+{escaped_name}[ \t]*;[ \t]*$",
+                re.MULTILINE,
+            )
+
+            uniform_matches = list(uniform_pattern.finditer(transformed))
+            input_matches = list(input_pattern.finditer(transformed))
+            declaration_count = len(uniform_matches) + len(input_matches)
+            if declaration_count == 0:
+                raise ValueError(
+                    f"Instance attribute {name!r} must be declared in the "
+                    f"fragment shader as 'uniform {glsl_type} {name};'."
+                )
+            if declaration_count > 1:
+                raise ValueError(
+                    f"Instance attribute {name!r} is declared more than once "
+                    "in the fragment shader."
+                )
+            if uniform_matches:
+                transformed = uniform_pattern.sub(
+                    rf"\g<indent>flat in {glsl_type} {name};",
+                    transformed,
+                    count=1,
+                )
+
+        return transformed
+
+    def _build_instanced_vertex_source(
+        self,
+        instance_attributes: dict[str, str],
+    ) -> str:
+        inputs = []
+        outputs = []
+        assignments = []
+
+        for name, glsl_type in instance_attributes.items():
+            if not isinstance(name, str) or re.fullmatch(
+                r"[A-Za-z_][A-Za-z0-9_]*", name
+            ) is None:
+                raise ValueError(f"Invalid instance attribute name: {name!r}")
+            if name.startswith("gl_") or name in _INSTANCE_RESERVED_NAMES:
+                raise ValueError(f"Reserved instance attribute name: {name!r}")
+            if glsl_type not in _INSTANCE_ATTRIBUTE_COMPONENTS:
+                supported = ", ".join(_INSTANCE_ATTRIBUTE_COMPONENTS)
+                raise ValueError(
+                    f"Unsupported GLSL type {glsl_type!r} for {name!r}; "
+                    f"expected one of: {supported}."
+                )
+
+            input_name = f"instanceData_{name}"
+            inputs.append(f"in {glsl_type} {input_name};")
+            outputs.append(f"flat out {glsl_type} {name};")
+            assignments.append(f"    {name} = {input_name};")
+
+        source = self._instanced_vertex_template
+        for name, glsl_type in _INSTANCED_TRANSFORM_ATTRIBUTES.items():
+            declaration = re.compile(
+                rf"^(?P<indent>[ \t]*)uniform[ \t]+{re.escape(glsl_type)}"
+                rf"[ \t]+{re.escape(name)}[ \t]*;(?P<comment>[^\n]*)$",
+                re.MULTILINE,
+            )
+            source, replacement_count = declaration.subn(
+                rf"\g<indent>in {glsl_type} {name};\g<comment>",
+                source,
+                count=1,
+            )
+            if replacement_count != 1:
+                raise RuntimeError(
+                    f"Instanced vertex template is missing "
+                    f"'uniform {glsl_type} {name};'."
+                )
+
+        return (
+            source
+            .replace("/*__INSTANCE_INPUTS__*/", "\n".join(inputs))
+            .replace("/*__INSTANCE_OUTPUTS__*/", "\n".join(outputs))
+            .replace("/*__INSTANCE_ASSIGNMENTS__*/", "\n".join(assignments))
+        )
+
+    def load_instanced_shader_from_path(
+        self,
+        fragment_path: str,
+        instance_attributes: dict[str, str] | None = None,
+    ) -> Shader:
+        """Load a fragment shader and pair it with the instanced vertex path."""
+        with open(fragment_path) as fragment_file:
+            fragment_src = fragment_file.read()
+        return self.make_instanced_shader(fragment_src, instance_attributes)
+
     def make_font_atlas(self, font_path: str = None, font_size: int = 64) -> FontAtlas:
         return FontAtlas(self, font_path, font_size)
 
@@ -484,6 +657,208 @@ class RenderEngine:
                 tex, layer, position, scale, angle, flip, section, shader, hdr_render
             )
 
+    @staticmethod
+    def _coerce_instance_array(
+        value,
+        count: int,
+        components: int,
+        name: str,
+    ) -> np.ndarray:
+        """Validate instance data without expanding shared values to ``count``."""
+        array = np.asarray(value, dtype=np.float32)
+
+        if components == 1:
+            if array.ndim == 0:
+                return np.asarray([array], dtype=np.float32)
+            if array.shape == (1,):
+                return np.ascontiguousarray(array)
+            if array.shape == (count,):
+                return np.ascontiguousarray(array.reshape(count, 1))
+            if array.shape == (count, 1):
+                return np.ascontiguousarray(array)
+        else:
+            if array.shape == (components,):
+                return np.ascontiguousarray(array)
+            if array.shape == (count, components):
+                return np.ascontiguousarray(array)
+
+        expected = (
+            f"a scalar or ({count},) array"
+            if components == 1
+            else f"a ({components},) vector or ({count}, {components}) array"
+        )
+        raise ValueError(f"{name} must be {expected}; got shape {array.shape}.")
+
+    def render_instanced(
+        self,
+        tex: Texture,
+        layer: Layer,
+        positions,
+        scales=(1.0, 1.0),
+        angles=0.0,
+        flips=(False, False),
+        sections=None,
+        shader: Shader = None,
+        instance_data: dict[str, object] | None = None,
+        hdr_render: bool = False,
+    ) -> None:
+        """Render many sprites from one texture in a single draw call.
+
+        ``positions`` is an ``(N, 2)`` sequence and determines the number of
+        instances. The other built-in values can each be one value shared by
+        every instance or an array with ``N`` values. Angles are in degrees;
+        sections contain ``(x, y, width, height)`` in source-texture pixels.
+        Custom data is defined when creating ``shader`` with
+        :meth:`make_instanced_shader` or
+        :meth:`load_instanced_shader_from_path`. ``instance_data`` must contain
+        one equally named value for each declared attribute.
+        """
+        if layer.texture is tex:
+            raise ValueError(
+                "RenderEngine.render_instanced() cannot sample from and render "
+                "to the same texture."
+            )
+
+        position_array = np.asarray(positions, dtype=np.float32)
+        if position_array.shape == (2,):
+            position_array = position_array.reshape(1, 2)
+        if position_array.ndim != 2 or position_array.shape[1] != 2:
+            raise ValueError(
+                "positions must be a (2,) vector or an (N, 2) array; "
+                f"got shape {position_array.shape}."
+            )
+        position_array = np.ascontiguousarray(position_array)
+        count = position_array.shape[0]
+        if count == 0:
+            return
+
+        if shader is None:
+            shader = (
+                self._shader_tonemap_instanced
+                if hdr_render
+                else self._shader_draw_instanced
+            )
+        if not getattr(shader, "uses_instanced_vertex", False):
+            raise ValueError(
+                "render_instanced() requires a shader created with "
+                "make_instanced_shader() or load_instanced_shader_from_path()."
+            )
+
+        custom_values = dict(instance_data or {})
+        expected_names = set(shader.instance_attributes)
+        supplied_names = set(custom_values)
+        if supplied_names != expected_names:
+            missing = sorted(expected_names - supplied_names)
+            extra = sorted(supplied_names - expected_names)
+            details = []
+            if missing:
+                details.append(f"missing {missing}")
+            if extra:
+                details.append(f"unexpected {extra}")
+            raise ValueError("Invalid instance_data: " + "; ".join(details) + ".")
+
+        if isinstance(scales, numbers.Number):
+            scales = (float(scales), float(scales))
+        scale_array = self._coerce_instance_array(scales, count, 2, "scales")
+        angle_array = self._coerce_instance_array(
+            angles, count, 1, "angles"
+        )
+
+        if isinstance(flips, (bool, np.bool_)):
+            flips = (float(flips), 0.0)
+        flip_array = self._coerce_instance_array(flips, count, 2, "flips")
+
+        if sections is None:
+            sections = (0.0, 0.0, float(tex.width), float(tex.height))
+        elif isinstance(sections, pygame.Rect):
+            sections = (sections.x, sections.y, sections.width, sections.height)
+        section_array = self._coerce_instance_array(
+            sections, count, 4, "sections"
+        )
+
+        layout = [
+            ("spritePosition", 2, position_array),
+            ("spriteScale", 2, scale_array),
+            ("spriteAngleDeg", 1, angle_array),
+            ("spriteFlip", 2, flip_array),
+            ("spriteSection", 4, section_array),
+        ]
+
+        for name, glsl_type in shader.instance_attributes.items():
+            components = _INSTANCE_ATTRIBUTE_COMPONENTS[glsl_type]
+            values = self._coerce_instance_array(
+                custom_values[name], count, components, f"instance_data[{name!r}]"
+            )
+            layout.append((f"instanceData_{name}", components, values))
+
+        total_components = sum(components for _, components, _ in layout)
+        stride_bytes = total_components * np.dtype(np.float32).itemsize
+        buffer_data = np.empty((count, total_components), dtype=np.float32)
+        offset = 0
+        for _, components, values in layout:
+            buffer_data[:, offset : offset + components] = values
+            offset += components
+
+        layer.framebuffer.use()
+        tex.use(location=0)
+        self._last_fbo_glo = layer.framebuffer.glo
+        self._last_tex_glo = tex.glo
+        self._bind_primary_texture_uniform(shader)
+        shader.bind_sampler2D_uniforms()
+
+        program = shader.program
+        program["uTextureSize"].value = (float(tex.width), float(tex.height))
+        program["uLayerSize"].value = (float(layer.width), float(layer.height))
+
+        key = program.glo
+        cache = self._instance_vao_cache.get(key)
+        if cache is None:
+            attribute_names = [name for name, _, _ in layout]
+            inactive = [name for name in attribute_names if name not in program]
+            if inactive:
+                raise ValueError(
+                    "Instanced shader does not actively use attributes: "
+                    + ", ".join(inactive)
+                    + ". Ensure each custom value is consumed by the fragment shader."
+                )
+
+            capacity = count
+            instance_vbo = self._ctx.buffer(
+                reserve=max(capacity * stride_bytes, 4),
+                dynamic=True,
+            )
+            content = [
+                (self._quad_fast_vbo, "2f", "quadPos"),
+                (
+                    instance_vbo,
+                    " ".join(f"{components}f" for _, components, _ in layout)
+                    + " /i",
+                    *attribute_names,
+                ),
+            ]
+            vao = self._ctx.vertex_array(
+                program,
+                content,
+            )
+            cache = {
+                "vao": vao,
+                "instance_vbo": instance_vbo,
+                "capacity": capacity,
+                "stride_bytes": stride_bytes,
+            }
+            self._instance_vao_cache[key] = cache
+
+        if cache["stride_bytes"] != stride_bytes:
+            raise RuntimeError("Instanced cache stride mismatch.")
+        if cache["capacity"] < count:
+            cache["capacity"] = max(count, cache["capacity"] * 2)
+
+        cache["instance_vbo"].orphan(cache["capacity"] * stride_bytes)
+        cache["instance_vbo"].write(buffer_data)
+
+        cache["vao"].render(moderngl.TRIANGLES, instances=count)
+        shader.clear_sampler2D_uniforms()
+
     def _render_cpu_vertices(
         self,
         tex: Texture,
@@ -607,14 +982,12 @@ class RenderEngine:
         shader.bind_sampler2D_uniforms()
 
         prog = shader.program
-        prog["uPosition"].value = (float(position[0]), float(position[1]))
-        prog["uSectionSize"].value = (sw, sh)
-        prog["uScale"].value = scale
-        prog["uAngleRad"].value = radians(angle)
-        prog["uFlipX"].value = int(flip_x)
-        prog["uFlipY"].value = int(flip_y)
-        prog["uSectionMin"].value = (sx / tex.width, sy / tex.height)
-        prog["uSectionMax"].value = ((sx + sw) / tex.width, (sy + sh) / tex.height)
+        prog["spritePosition"].value = (float(position[0]), float(position[1]))
+        prog["spriteScale"].value = scale
+        prog["spriteAngleDeg"].value = float(angle)
+        prog["spriteFlip"].value = (float(flip_x), float(flip_y))
+        prog["spriteSection"].value = (sx, sy, sw, sh)
+        prog["uTextureSize"].value = (float(tex.width), float(tex.height))
         prog["uLayerSize"].value = (float(layer.width), float(layer.height))
 
         key = prog.glo
@@ -1031,8 +1404,16 @@ class RenderEngine:
         """
         self._shader_draw.release()
         self._shader_draw_fast.release()
+        self._shader_draw_instanced.release()
         self._shader_tonemap.release()
         self._shader_tonemap_fast.release()
+        self._shader_tonemap_instanced.release()
+
+        for cache in self._instance_vao_cache.values():
+            cache["vao"].release()
+            cache["instance_vbo"].release()
+        self._instance_vao_cache.clear()
+
         self._screen.framebuffer.release()
         self._ctx.release()
 
